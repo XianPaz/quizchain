@@ -8,7 +8,6 @@ const sessionRoutes = require("./routes/sessions");
 
 const app = express();
 const server = http.createServer(app);
-
 const io = new Server(server, {
   cors: {
     origin: process.env.CLIENT_URL,
@@ -22,52 +21,133 @@ app.use("/sessions", sessionRoutes);
 
 // ── Socket.io events ──────────────────────────────────────────────────────────
 io.on("connection", (socket) => {
-  console.log("Client connected:", socket.id);
+  console.log("Connected:", socket.id);
 
-  // Host or player joins a socket room
-  socket.on("join_room", ({ roomCode, player }) => {
+  // ── Join room ──────────────────────────────────────────────────────────────
+  socket.on("join_room", ({ roomCode, player, role }) => {
     socket.join(roomCode);
-    if (player) {
-      const session = store.addPlayer(roomCode, player);
+    socket.data.roomCode = roomCode;
+    socket.data.role = role;
+    socket.data.address = player?.address;
+
+    if (role === "student" && player) {
+      const session = store.addPlayer(roomCode, { ...player, socketId: socket.id });
       if (session) {
-        // Notify everyone in the room a new player joined
         io.to(roomCode).emit("player_joined", { players: session.players });
       }
     }
+
+    if (role === "host") {
+      const session = store.get(roomCode);
+      if (session) socket.emit("session_state", session);
+    }
   });
 
-  // Host starts the quiz
-  socket.on("start_quiz", ({ roomCode }) => {
+  // ── Host starts the quiz ───────────────────────────────────────────────────
+  socket.on("host_start_quiz", ({ roomCode }) => {
     store.setStatus(roomCode, "active");
     io.to(roomCode).emit("quiz_started");
+    console.log(`Quiz started in room ${roomCode}`);
   });
 
-  // Host broadcasts next question
-  socket.on("next_question", ({ roomCode, questionIndex }) => {
-    io.to(roomCode).emit("question", { questionIndex });
-  });
-
-  // Player submits answer — host receives it
-  socket.on("submit_answer", ({ roomCode, player, questionIndex, answerIndex, timeRemaining, timeLimit }) => {
-    const speedScore = Math.round((timeRemaining / timeLimit) * 100);
-    // Broadcast to host only (host is also in the room)
-    io.to(roomCode).emit("answer_received", {
-      player,
+  // ── Host opens a question ──────────────────────────────────────────────────
+  socket.on("host_open_question", ({ roomCode, questionIndex }) => {
+    store.setCurrentQuestion(roomCode, questionIndex);
+    io.to(roomCode).emit("question_opened", {
       questionIndex,
-      answerIndex,
-      speedScore,
+      openedAt: Date.now(),
     });
+    console.log(`Question ${questionIndex} opened in room ${roomCode}`);
   });
 
-  // Host ends quiz and triggers reward distribution
-  socket.on("end_quiz", ({ roomCode }) => {
-    store.setStatus(roomCode, "finished");
+  // ── Student submits answer ─────────────────────────────────────────────────
+  socket.on("student_answer", ({ roomCode, address, questionIndex, answerIndex, speedScore }) => {
+    const session = store.recordAnswer(roomCode, questionIndex, address, answerIndex, speedScore);
+    if (!session) return;
+
+    socket.emit("answer_ack", { questionIndex, answerIndex });
+
+    // Notify host of updated answer count
+    const answered = Object.keys(session.answers[questionIndex] || {}).length;
+    io.to(roomCode).emit("answer_count", {
+      answered,
+      total: session.players.length,
+    });
+
+    // Check if all students answered
+    if (store.allAnswered(roomCode, questionIndex)) {
+      store.calculateScores(roomCode, questionIndex);
+      io.to(roomCode).emit("all_answered", { questionIndex });
+      console.log(`All answered question ${questionIndex} in room ${roomCode}`);
+    }
+  });
+
+  // ── Student timed out (no answer) ─────────────────────────────────────────
+  socket.on("student_timeout", ({ roomCode, address, questionIndex }) => {
+    store.recordAnswer(roomCode, questionIndex, address, -1, 0);
     const session = store.get(roomCode);
-    io.to(roomCode).emit("quiz_ended", { players: session?.players });
+    if (!session) return;
+
+    const answered = Object.keys(session.answers[questionIndex] || {}).length;
+    io.to(roomCode).emit("answer_count", {
+      answered,
+      total: session.players.length,
+    });
+
+    if (store.allAnswered(roomCode, questionIndex)) {
+      store.calculateScores(roomCode, questionIndex);
+      io.to(roomCode).emit("all_answered", { questionIndex });
+    }
+  });
+
+  // ── Host shows stats for current question ─────────────────────────────────
+  socket.on("host_show_stats", ({ roomCode, questionIndex }) => {
+    store.calculateScores(roomCode, questionIndex);
+    const stats = store.getQuestionStats(roomCode, questionIndex);
+    store.setStatus(roomCode, "showing_stats");
+    io.to(roomCode).emit("question_stats", stats);
+  });
+
+  // ── Host ends the quiz ─────────────────────────────────────────────────────
+  socket.on("host_end_quiz", ({ roomCode }) => {
+    store.calculateTokens(roomCode);
+    store.setStatus(roomCode, "finished");
+    const scores = store.getScores(roomCode);
+    io.to(roomCode).emit("quiz_ended", { scores });
+    console.log(`Quiz ended in room ${roomCode}`);
+  });
+
+  // ── Host ends the quiz without reward distribution ─────────────────────────
+  socket.on("host_end_without_distribute", ({ roomCode }) => {
+    store.calculateTokens(roomCode);
+    const scores = store.getScores(roomCode);
+    // Notify students the session ended without rewards
+    io.to(roomCode).emit("session_cancelled", { scores });
+    store.delete(roomCode);
+  });
+
+  // ── Host distributes rewards ───────────────────────────────────────────────
+  socket.on("host_distribute", ({ roomCode }) => {
+    const scores = store.getScores(roomCode);
+    // In production: call QuizGame.finalizeAndDistribute() here via ethers.js
+    io.to(roomCode).emit("rewards_distributed", { scores });
+    console.log(`Rewards distributed in room ${roomCode}`);
+  });
+
+  // ── Student claims tokens ──────────────────────────────────────────────────
+  socket.on("student_claim", ({ roomCode, address }) => {
+    // In production: verify on-chain tx hash here
+    socket.emit("claim_confirmed", { address });
+    console.log(`${address} claimed tokens in room ${roomCode}`);
+  });
+
+  // ── Play again ─────────────────────────────────────────────────────────────
+  socket.on("play_again", ({ roomCode, address }) => {
+    socket.emit("redirect_lobby");
   });
 
   socket.on("disconnect", () => {
-    console.log("Client disconnected:", socket.id);
+    console.log("Disconnected:", socket.id);
   });
 });
 
