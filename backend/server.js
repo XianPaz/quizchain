@@ -117,6 +117,15 @@ io.on("connection", (socket) => {
     console.log(`Quiz ended in room ${roomCode}`);
   });
 
+  // ── Host show stats ─────────────────────────────────────────────────────────
+  socket.on("host_show_stats", ({ roomCode, questionIndex }) => {
+    store.calculateScores(roomCode, questionIndex);
+    const stats = store.getQuestionStats(roomCode, questionIndex);
+    store.setStatus(roomCode, "showing_stats");
+    const scores = store.getScores(roomCode);
+    io.to(roomCode).emit("question_stats", { ...stats, scores });
+  });
+
   // ── Host ends the quiz without reward distribution ─────────────────────────
   socket.on("host_end_without_distribute", ({ roomCode }) => {
     store.calculateTokens(roomCode);

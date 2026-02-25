@@ -8,6 +8,7 @@ module.exports = {
       players: [],          // { address, name, socketId }
       answers: {},          // { questionIndex: { address: { answerIndex, speedScore } } }
       scores: {},           // { address: { correct, speedScores[], totalTokens } }
+      scoredQuestions: new Set(), 
       status: "waiting",    // waiting | active | question_open | showing_stats | finished
       currentQuestion: -1,
       createdAt: Date.now(),
@@ -75,6 +76,12 @@ module.exports = {
   calculateScores(roomCode, questionIndex) {
     const s = sessions[roomCode];
     if (!s) return;
+    if (s.scoredQuestions.has(questionIndex)) {
+      this.calculateTokens(roomCode);
+      return;
+    };
+    s.scoredQuestions.add(questionIndex);
+    
     const question = s.questions[questionIndex];
     const answers = s.answers[questionIndex] || {};
     Object.entries(answers).forEach(([address, data]) => {
@@ -84,6 +91,8 @@ module.exports = {
         s.scores[address].speedScores.push(data.speedScore);
       }
     });
+    // Recalculate tokens after every question so leaderboard is always fresh
+    this.calculateTokens(roomCode);
   },
 
   calculateTokens(roomCode) {

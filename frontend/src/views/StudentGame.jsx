@@ -3,6 +3,52 @@ import { useQuizSocket } from "../hooks/useQuizSocket";
 import { COLORS } from "../styles/colors";
 import { formatAddress, getRankEmoji } from "../utils/helpers";
 
+function Leaderboard({ scores, myAddress, quiz }) {
+  const sorted = Object.entries(scores)
+    .map(([address, s]) => ({ address, ...s }))
+    .sort((a, b) => b.correct - a.correct || 0);
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.muted, marginBottom: 10 }}>
+        LEADERBOARD
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {sorted.map((p, i) => {
+          const isMe = p.address === myAddress;
+          return (
+            <div key={p.address} style={{
+              display: "flex", alignItems: "center", gap: 12,
+              background: isMe ? `${COLORS.accent}11` : COLORS.card,
+              border: `1px solid ${isMe ? COLORS.accent + "44" : COLORS.border}`,
+              borderRadius: 10, padding: "10px 14px",
+            }}>
+              <span style={{ fontSize: 16, width: 28 }}>{getRankEmoji(i + 1)}</span>
+              <span style={{
+                flex: 1, fontFamily: "JetBrains Mono, monospace", fontSize: 12,
+                color: isMe ? COLORS.accent : COLORS.text,
+              }}>
+                {formatAddress(p.address)}
+                {isMe && <span style={{ color: COLORS.muted, fontSize: 11 }}> (you)</span>}
+              </span>
+              <span style={{ color: COLORS.muted, fontSize: 12 }}>
+                {p.correct}{quiz ? `/${quiz.questions.length}` : ""} correct
+              </span>
+              <span style={{
+                background: `${COLORS.accent}22`, border: `1px solid ${COLORS.accent}44`,
+                borderRadius: 6, padding: "3px 8px",
+                fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: COLORS.accent,
+              }}>
+                ⬡ {p.totalTokens ?? "—"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
   const [phase, setPhase] = useState("lobby_wait");
   // lobby_wait | answering | answer_wait | viewing_stats | finished | claiming | claimed
@@ -56,6 +102,7 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
 
     question_stats: (stats) => {
       setQuestionStats(stats);
+      if (stats.scores) setAllScores(stats.scores);
       setPhase("viewing_stats");
     },
 
@@ -302,6 +349,10 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
               })}
             </div>
 
+            {Object.keys(allScores).length > 0 && (
+              <Leaderboard scores={allScores} myAddress={wallet?.address} quiz={quiz} />
+            )}
+
             <p style={{ textAlign: "center", color: COLORS.muted, fontSize: 13 }}>
               Waiting for host to continue...
             </p>
@@ -370,6 +421,11 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
                 </div>
               </div>
             )}
+
+            {Object.keys(allScores).length > 0 && (
+              <Leaderboard scores={allScores} myAddress={wallet?.address} quiz={quiz} />
+            )}
+
             <p style={{ color: COLORS.muted, fontSize: 14 }}>
               ⏳ Waiting for host to distribute rewards...
             </p>

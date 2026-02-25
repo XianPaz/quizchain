@@ -3,6 +3,47 @@ import { useQuizSocket } from "../hooks/useQuizSocket";
 import { COLORS } from "../styles/colors";
 import { getRankEmoji, formatAddress } from "../utils/helpers";
 
+function Leaderboard({ scores, quiz }) {
+  const sorted = Object.entries(scores)
+    .map(([address, s]) => ({ address, ...s }))
+    .sort((a, b) => b.correct - a.correct || 0);
+
+  return (
+    <div style={{ marginTop: 20 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.muted, marginBottom: 10 }}>
+        LEADERBOARD
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {sorted.map((p, i) => (
+          <div key={p.address} style={{
+            display: "flex", alignItems: "center", gap: 12,
+            background: COLORS.card, border: `1px solid ${COLORS.border}`,
+            borderRadius: 10, padding: "10px 14px",
+          }}>
+            <span style={{ fontSize: 16, width: 28 }}>{getRankEmoji(i + 1)}</span>
+            <span style={{
+              flex: 1, fontFamily: "JetBrains Mono, monospace",
+              fontSize: 12, color: COLORS.text,
+            }}>
+              {formatAddress(p.address)}
+            </span>
+            <span style={{ color: COLORS.muted, fontSize: 12 }}>
+              {p.correct}/{quiz.questions.length} correct
+            </span>
+            <span style={{
+              background: `${COLORS.accent}22`, border: `1px solid ${COLORS.accent}44`,
+              borderRadius: 6, padding: "3px 8px",
+              fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: COLORS.accent,
+            }}>
+              ⬡ {p.totalTokens ?? "—"}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export default function HostGame({ quiz, wallet, onGameEnd }) {
   const [phase, setPhase] = useState("lobby");
   // lobby | question_active | waiting_answers | showing_stats | finished | distributing
@@ -22,6 +63,7 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
     all_answered: () => setAllAnswered(true),
     question_stats: (stats) => {
       setQuestionStats(stats);
+      if (stats.scores) setScores(stats.scores);
       setPhase("showing_stats");
     },
     quiz_ended: ({ scores }) => {
@@ -185,12 +227,11 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
                 {question.options.map((opt, i) => (
                   <div key={i} style={{
                     padding: "10px 14px", borderRadius: 8, fontSize: 13,
-                    background: i === question.correct ? `${COLORS.accent}22` : COLORS.surface,
-                    border: `1px solid ${i === question.correct ? COLORS.accent + "55" : COLORS.border}`,
-                    color: i === question.correct ? COLORS.accent : COLORS.text,
+                    background: COLORS.surface,
+                    border: `1px solid COLORS.border`,
+                    color: COLORS.text,
                   }}>
                     {["A", "B", "C", "D"][i]}. {opt}
-                    {i === question.correct && " ✓"}
                   </div>
                 ))}
               </div>
@@ -287,6 +328,10 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
                 {questionStats.correctCount} / {questionStats.totalPlayers} got it right
               </div>
             </div>
+
+            {Object.keys(scores).length > 0 && (
+              <Leaderboard scores={scores} quiz={quiz} />
+            )}
 
             <button
               onClick={nextQuestion}
