@@ -7,20 +7,9 @@ import { SAMPLE_QUESTIONS, QUIZ_TOKEN_CONTRACT, QUIZ_GAME_CONTRACT } from "../co
 export default function HostDashboard({ wallet, onStartQuiz, onBack }) {
   const [tab, setTab] = useState("create");
   const [questions, setQuestions] = useState(SAMPLE_QUESTIONS);
-  const [newQ, setNewQ] = useState({
-    question: "", options: ["", "", "", ""], correct: 0, timeLimit: 15
-  });
   const [quizName, setQuizName] = useState("Web3 Fundamentals Quiz");
   const [showContract, setShowContract] = useState(false);
   const [contractTab, setContractTab] = useState("token");
-
-  const addQuestion = () => {
-    if (!newQ.question.trim()) return;
-    setQuestions(prev => [...prev, { ...newQ, id: Date.now() }]);
-    setNewQ({ question: "", options: ["", "", "", ""], correct: 0, timeLimit: 15 });
-  };
-
-  const removeQuestion = (id) => setQuestions(prev => prev.filter(q => q.id !== id));
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.bg }}>
@@ -42,9 +31,9 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack }) {
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px" }}>
         {/* Tab bar */}
         <div className="tab-bar" style={{ marginBottom: 24 }}>
-          {["create", "questions", "contracts"].map(t => (
+          {["create", "questions"].map(t => (
             <button key={t} className={`tab ${tab === t ? "active" : ""}`} onClick={() => setTab(t)}>
-              {t === "create" ? "⚙️ Setup" : t === "questions" ? "❓ Questions" : "📜 Contracts"}
+              {t === "create" ? "⚙️ Setup" : "❓ Questions"}
             </button>
           ))}
         </div>
@@ -169,121 +158,11 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack }) {
                         </span>
                       </div>
                     </div>
-                    <button onClick={() => removeQuestion(q.id)}
-                      style={{
-                        background: "none", border: "none", color: COLORS.muted,
-                        cursor: "pointer", fontSize: 18, padding: 4,
-                      }}>×</button>
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Add question form */}
-            <div className="card" style={{ borderStyle: "dashed" }}>
-              <div style={{ fontWeight: 700, marginBottom: 14, color: COLORS.muted }}>+ Add Question</div>
-              <div style={{ display: "grid", gap: 12 }}>
-                <input className="input" placeholder="Question text..."
-                  value={newQ.question}
-                  onChange={e => setNewQ(p => ({ ...p, question: e.target.value }))} />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  {newQ.options.map((opt, i) => (
-                    <input key={i} className="input"
-                      placeholder={`Option ${i + 1}${i === newQ.correct ? " ✓ correct" : ""}`}
-                      value={opt}
-                      style={{ borderColor: i === newQ.correct ? `${COLORS.accent}66` : undefined }}
-                      onChange={e => {
-                        const opts = [...newQ.options];
-                        opts[i] = e.target.value;
-                        setNewQ(p => ({ ...p, options: opts }));
-                      }} />
-                  ))}
-                </div>
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: 12, color: COLORS.muted }}>Correct answer (0-3):</label>
-                    <input className="input" type="number" min="0" max="3"
-                      value={newQ.correct}
-                      onChange={e => setNewQ(p => ({ ...p, correct: +e.target.value }))} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ fontSize: 12, color: COLORS.muted }}>Time limit (sec):</label>
-                    <input className="input" type="number" min="5" max="60"
-                      value={newQ.timeLimit}
-                      onChange={e => setNewQ(p => ({ ...p, timeLimit: +e.target.value }))} />
-                  </div>
-                  <button className="btn btn-primary" style={{ marginTop: 18 }}
-                    onClick={addQuestion}>Add</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* CONTRACTS TAB */}
-        {tab === "contracts" && (
-          <div className="slide-up" style={{ opacity: 0 }}>
-            <div style={{ marginBottom: 16, color: COLORS.muted, fontSize: 14, lineHeight: 1.6 }}>
-              Deploy these two contracts to Sepolia Testnet using Hardhat or Remix IDE.
-              Deploy <strong>QuizToken</strong> first, then pass its address to <strong>QuizGame</strong>,
-              and finally call <code style={{ fontFamily: "JetBrains Mono", fontSize: 12 }}>setQuizGameContract()</code> on the token.
-            </div>
-
-            <div className="tab-bar" style={{ marginBottom: 16 }}>
-              {["token", "game"].map(t => (
-                <button key={t} className={`tab ${contractTab === t ? "active" : ""}`}
-                  onClick={() => setContractTab(t)}>
-                  {t === "token" ? "📄 QuizToken.sol" : "🎮 QuizGame.sol"}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ position: "relative" }}>
-              <button
-                className="btn btn-secondary btn-sm"
-                style={{ position: "absolute", top: 8, right: 8, zIndex: 1 }}
-                onClick={() => {
-                  navigator.clipboard.writeText(
-                    contractTab === "token" ? QUIZ_TOKEN_CONTRACT : QUIZ_GAME_CONTRACT
-                  );
-                }}>
-                📋 Copy
-              </button>
-              <div className="code-block" style={{ maxHeight: 500 }}>
-                {(contractTab === "token" ? QUIZ_TOKEN_CONTRACT : QUIZ_GAME_CONTRACT)
-                  .split("\n")
-                  .map((line, i) => (
-                    <div key={i} style={{ display: "flex" }}>
-                      <span style={{
-                        color: COLORS.border, width: 30, flexShrink: 0,
-                        fontSize: 10, paddingRight: 10, userSelect: "none",
-                      }}>{i + 1}</span>
-                      <span>{line}</span>
-                    </div>
-                  ))}
-              </div>
-            </div>
-
-            <div className="card" style={{ marginTop: 16 }}>
-              <div style={{ fontWeight: 700, marginBottom: 12 }}>📦 Hardhat Setup</div>
-              <div className="code-block" style={{ fontSize: 12 }}>
-                {`npm init -y && npm i hardhat @openzeppelin/contracts
-npx hardhat init
-
-# Deploy to Sepolia (in scripts/deploy.js)
-const token = await ethers.deployContract("QuizToken");
-await token.waitForDeployment();
-
-const game = await ethers.deployContract("QuizGame", [token.target]);
-await game.waitForDeployment();
-
-await token.setQuizGameContract(game.target);
-
-# .env
-SEPOLIA_RPC_URL=https://sepolia.infura.io/v3/YOUR_KEY
-PRIVATE_KEY=your_deployer_private_key`}
-              </div>
-            </div>
           </div>
         )}
       </div>
