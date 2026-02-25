@@ -231,7 +231,7 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
                     border: `1px solid COLORS.border`,
                     color: COLORS.text,
                   }}>
-                    {["A", "B", "C", "D"][i]}. {opt}
+                    {["A", "B", "C", "D", "E", "F"][i]}. {opt}
                   </div>
                 ))}
               </div>
@@ -285,6 +285,15 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
               QUESTION {currentQ + 1} RESULTS
             </div>
 
+            {/* Question description */}
+            <div style={{
+            background: COLORS.card, border: `1px solid ${COLORS.border}`,
+            borderRadius: 12, padding: 20, marginBottom: 16,
+            fontSize: 16, fontWeight: 700, color: COLORS.text, lineHeight: 1.5,
+            }}>
+            {quiz.questions[currentQ].question}
+            </div>
+
             {/* Answer distribution */}
             <div style={{
               background: COLORS.card, border: `1px solid ${COLORS.border}`,
@@ -302,7 +311,7 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
                       fontSize: 13, marginBottom: 4,
                     }}>
                       <span style={{ color: isCorrect ? COLORS.accent : COLORS.text }}>
-                        {["A", "B", "C", "D"][i]}. {quiz.questions[currentQ].options[i]}
+                        {["A", "B", "C", "D", "E", "F"][i]}. {quiz.questions[currentQ].options[i]}
                         {isCorrect && " ✓"}
                       </span>
                       <span style={{ color: COLORS.muted }}>{d.count} ({pct}%)</span>

@@ -262,11 +262,11 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
                   }}>
                   <div style={{
                     width: 32, height: 32, borderRadius: 6, flexShrink: 0,
-                    background: [COLORS.red, "#f97316", COLORS.blue, COLORS.purple][i],
+                    background: [COLORS.red, "#f97316", COLORS.blue, COLORS.purple, "#06b6d4", "#84cc16"][i],
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontWeight: 700, fontSize: 14, color: "#fff",
                   }}>
-                    {["A", "B", "C", "D"][i]}
+                    {["A", "B", "C", "D", "E", "F"][i]}
                   </div>
                   {opt}
                 </div>
@@ -298,6 +298,15 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
               fontSize: 18, marginBottom: 20, color: COLORS.accent,
             }}>
               QUESTION {currentQ + 1} RESULTS
+            </div>
+
+            {/* Question description */}
+            <div style={{
+            background: COLORS.card, border: `1px solid ${COLORS.border}`,
+            borderRadius: 12, padding: 20, marginBottom: 16,
+            fontSize: 16, fontWeight: 700, color: COLORS.text, lineHeight: 1.5,
+            }}>
+            {quiz.questions[currentQ].question}
             </div>
 
             {/* Correct/wrong feedback */}
@@ -332,7 +341,7 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
                       fontSize: 13, marginBottom: 4,
                     }}>
                       <span style={{ color: isCorrect ? COLORS.accent : COLORS.text }}>
-                        {["A", "B", "C", "D"][i]}. {quiz.questions[currentQ].options[i]}
+                        {["A", "B", "C", "D", "E", "F"][i]}. {quiz.questions[currentQ].options[i]}
                         {isCorrect && " ✓"}
                       </span>
                       <span style={{ color: COLORS.muted }}>{d.count} ({pct}%)</span>
