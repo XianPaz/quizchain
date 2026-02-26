@@ -28,6 +28,15 @@ export async function distributeRewards(scores) {
   const signer = await provider.getSigner();
   const contract = await getContract(signer);
 
+  // Filter out any invalid addresses
+  const validScores = Object.entries(scores).filter(([address]) => {
+    const isValid = address &&
+      address !== "undefined" &&
+      ethers.isAddress(address);
+    if (!isValid) console.warn("Skipping invalid address:", address);
+    return isValid;
+  });
+
   const students = Object.keys(scores);
   const amounts = students.map(address =>
     ethers.parseUnits(scores[address].totalTokens.toString(), 18)

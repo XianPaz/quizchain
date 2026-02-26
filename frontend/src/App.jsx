@@ -16,6 +16,7 @@ export default function App() {
   const { wallet, connect, disconnect } = useWallet();
   const [role, setRole] = useState(null); // "host" | "student"
   const [activeSessions, setActiveSessions] = useState({});
+  const [nickname, setNickname] = useState("");
 
   const handleStartQuiz = async (quizData) => {
     const roomCode = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -36,20 +37,30 @@ export default function App() {
     setView("game");
   };
 
-  const handleJoinQuiz = async (code) => {
+  const handleJoinQuiz = async (code, nickname) => {
     const trimmed = code.toUpperCase();
     const result = await validateSession(trimmed);
+
     if (!result.success) return { error: result.error };
 
     socket.connect();
     socket.once("connect", () => {
+      const address = wallet?.address;
+      if (!address) {
+        console.error("Wallet address not available");
+        return;
+      }
       socket.emit("join_room", {
         roomCode: trimmed,
-        player: { address: wallet?.address, name: wallet?.address?.slice(0, 6) },
+        player: {
+          address,
+          name: nickname,
+        },
         role: "student",
       });
     });
 
+    setNickname(nickname);
     setActiveQuiz(result.session);
     setRole("student");
     setView("game");
@@ -70,6 +81,7 @@ export default function App() {
       <StudentGame
         quiz={activeQuiz}
         wallet={wallet}
+        nickname={nickname}
         onPlayAgain={() => { setView("join"); setActiveQuiz(null); }}
         onGameEnd={() => { setView("landing"); setActiveQuiz(null); }}
       />

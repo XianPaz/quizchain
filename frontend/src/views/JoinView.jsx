@@ -7,16 +7,27 @@ export default function JoinView({ wallet, onJoin, onBack, onConnectWallet, acti
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [joining, setJoining] = useState(false);
+  const [nickname, setNickname] = useState("");
 
   const handleJoin = async () => {
+    if (!wallet?.address) {
+      setError("Please connect your MetaMask wallet before joining.");
+      return;
+    }
+    
     const trimmed = code.trim().toUpperCase();
+
+    if (!nickname.trim()) {
+      setError("Please enter a nickname.");
+      return;
+    }
     if (trimmed.length < 4) {
       setError("Room code is too short.");
       return;
     }
 
     setJoining(true);
-    const result = await onJoin(trimmed); // now async
+    const result = await onJoin(trimmed, nickname.trim());
 
     if (result?.error) {
       setError(result.error);
@@ -71,6 +82,20 @@ export default function JoinView({ wallet, onJoin, onBack, onConnectWallet, acti
           </div>
         )}
 
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 12, color: COLORS.muted, display: "block", marginBottom: 6 }}>
+            YOUR NICKNAME
+          </label>
+          <input
+            className="input"
+            placeholder="Enter your nickname..."
+            value={nickname}
+            onChange={e => setNickname(e.target.value)}
+            maxLength={20}
+            style={{ fontSize: 16 }}
+          />
+        </div>
+
         <input
           className="input"
           placeholder="Enter room code (e.g. AB12CD)"
@@ -100,7 +125,7 @@ export default function JoinView({ wallet, onJoin, onBack, onConnectWallet, acti
           className="btn btn-primary btn-lg"
           style={{ width: "100%" }}
           onClick={handleJoin}
-          disabled={code.length < 4 || joining}
+          disabled={code.length < 4 || !nickname.trim() || joining}
         >
           {joining ? "Joining..." : "Join Room →"}
         </button>

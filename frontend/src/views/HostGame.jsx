@@ -4,10 +4,14 @@ import { COLORS } from "../styles/colors";
 import { getRankEmoji, formatAddress } from "../utils/helpers";
 import { distributeRewards, isMinter } from "../utils/blockchain";
 
-function Leaderboard({ scores, quiz }) {
+function Leaderboard({ scores, players, quiz }) {
   const sorted = Object.entries(scores)
     .map(([address, s]) => ({ address, ...s }))
     .sort((a, b) => b.correct - a.correct || 0);
+
+  // Build address → nickname map from players list
+  const nicknameMap = {};
+  players.forEach(p => { nicknameMap[p.address] = p.name; });
 
   return (
     <div style={{ marginTop: 20 }}>
@@ -22,14 +26,11 @@ function Leaderboard({ scores, quiz }) {
             borderRadius: 10, padding: "10px 14px",
           }}>
             <span style={{ fontSize: 16, width: 28 }}>{getRankEmoji(i + 1)}</span>
-            <span style={{
-              flex: 1, fontFamily: "JetBrains Mono, monospace",
-              fontSize: 12, color: COLORS.text,
-            }}>
-              {formatAddress(p.address)}
+            <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: COLORS.text }}>
+              {nicknameMap[p.address] || formatAddress(p.address)}
             </span>
             <span style={{ color: COLORS.muted, fontSize: 12 }}>
-              {p.correct}/{quiz.questions.length} correct
+              {p.correct}{quiz ? `/${quiz.questions.length}` : ""} correct
             </span>
             <span style={{
               background: `${COLORS.accent}22`, border: `1px solid ${COLORS.accent}44`,
@@ -359,7 +360,7 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
             </div>
 
             {Object.keys(scores).length > 0 && (
-              <Leaderboard scores={scores} quiz={quiz} />
+              <Leaderboard scores={scores} players={players} quiz={quiz} />
             )}
 
             <button
@@ -389,28 +390,36 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
             </h2>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 32 }}>
-              {sortedScores.map((p, i) => (
-                <div key={p.address} style={{
-                  display: "flex", alignItems: "center", gap: 12,
-                  background: COLORS.card, border: `1px solid ${COLORS.border}`,
-                  borderRadius: 10, padding: "12px 16px",
-                }}>
-                  <span style={{ fontSize: 20, width: 32 }}>{getRankEmoji(i + 1)}</span>
-                  <span style={{ flex: 1, fontFamily: "JetBrains Mono, monospace", fontSize: 13, color: COLORS.text }}>
-                    {formatAddress(p.address)}
-                  </span>
-                  <span style={{ color: COLORS.muted, fontSize: 12 }}>
-                    {p.correct}/{quiz.questions.length} correct
-                  </span>
-                  <span style={{
-                    background: `${COLORS.accent}22`, border: `1px solid ${COLORS.accent}44`,
-                    borderRadius: 6, padding: "4px 10px",
-                    fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: COLORS.accent,
+              {sortedScores.map((p, i) => {
+                const nickname = players.find(pl => pl.address === p.address)?.name;
+                return (
+                  <div key={p.address} style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    background: COLORS.card, border: `1px solid ${COLORS.border}`,
+                    borderRadius: 10, padding: "12px 16px",
                   }}>
-                    ⬡ {p.totalTokens} QTKN
-                  </span>
-                </div>
-              ))}
+                    <span style={{ fontSize: 20, width: 32 }}>{getRankEmoji(i + 1)}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: COLORS.text }}>
+                        {nickname || formatAddress(p.address)}
+                      </div>
+                      <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: COLORS.muted }}>
+                        {formatAddress(p.address)}
+                      </div>
+                    </div>
+                    <span style={{ color: COLORS.muted, fontSize: 12 }}>
+                      {p.correct}/{quiz.questions.length} correct
+                    </span>
+                    <span style={{
+                      background: `${COLORS.accent}22`, border: `1px solid ${COLORS.accent}44`,
+                      borderRadius: 6, padding: "4px 10px",
+                      fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: COLORS.accent,
+                    }}>
+                      ⬡ {p.totalTokens} QTKN
+                    </span>
+                  </div>
+                );
+              })}
             </div>
 
             <button

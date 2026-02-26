@@ -5,10 +5,13 @@ import { formatAddress, getRankEmoji } from "../utils/helpers";
 import { getTokenBalance } from "../utils/blockchain";
 import { CONTRACTS } from "../config";
 
-function Leaderboard({ scores, myAddress, quiz }) {
+function Leaderboard({ scores, players, myAddress, quiz }) {
   const sorted = Object.entries(scores)
     .map(([address, s]) => ({ address, ...s }))
     .sort((a, b) => b.correct - a.correct || 0);
+
+  const nicknameMap = {};
+  players.forEach(p => { nicknameMap[p.address] = p.name; });
 
   return (
     <div style={{ marginTop: 20 }}>
@@ -27,10 +30,10 @@ function Leaderboard({ scores, myAddress, quiz }) {
             }}>
               <span style={{ fontSize: 16, width: 28 }}>{getRankEmoji(i + 1)}</span>
               <span style={{
-                flex: 1, fontFamily: "JetBrains Mono, monospace", fontSize: 12,
+                flex: 1, fontSize: 14, fontWeight: isMe ? 700 : 400,
                 color: isMe ? COLORS.accent : COLORS.text,
               }}>
-                {formatAddress(p.address)}
+                {nicknameMap[p.address] || formatAddress(p.address)}
                 {isMe && <span style={{ color: COLORS.muted, fontSize: 11 }}> (you)</span>}
               </span>
               <span style={{ color: COLORS.muted, fontSize: 12 }}>
@@ -51,7 +54,7 @@ function Leaderboard({ scores, myAddress, quiz }) {
   );
 };
 
-export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
+export default function StudentGame({ quiz, wallet, nickname, onPlayAgain, onGameEnd }) {
   const [phase, setPhase] = useState("lobby_wait");
   // lobby_wait | answering | answer_wait | viewing_stats | finished | claiming | claimed
   const [currentQ, setCurrentQ] = useState(0);
@@ -363,7 +366,7 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
             </div>
 
             {Object.keys(allScores).length > 0 && (
-              <Leaderboard scores={allScores} myAddress={wallet?.address} quiz={quiz} />
+              <Leaderboard scores={allScores} players={players} myAddress={wallet?.address} quiz={quiz} />
             )}
 
             <p style={{ textAlign: "center", color: COLORS.muted, fontSize: 13 }}>
@@ -436,7 +439,7 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
             )}
 
             {Object.keys(allScores).length > 0 && (
-              <Leaderboard scores={allScores} myAddress={wallet?.address} quiz={quiz} />
+              <Leaderboard scores={allScores} players={players} myAddress={wallet?.address} quiz={quiz} />
             )}
 
             <p style={{ color: COLORS.muted, fontSize: 14 }}>

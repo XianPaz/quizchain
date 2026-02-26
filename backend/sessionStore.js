@@ -22,6 +22,10 @@ module.exports = {
 
   addPlayer(roomCode, player) {
     if (!sessions[roomCode]) return null;
+    if (!player?.address || player.address === "undefined") {
+      console.error("Invalid player address:", player);
+      return null;
+    }
     const already = sessions[roomCode].players.find(p => p.address === player.address);
     if (!already) {
       sessions[roomCode].players.push(player);
@@ -100,6 +104,7 @@ module.exports = {
     if (!s) return;
     const totalQ = s.questions.length;
     Object.entries(s.scores).forEach(([address, score]) => {
+      if (!address || address === "undefined") return; // ← skip invalid
       const avgSpeed = score.speedScores.length > 0
         ? score.speedScores.reduce((a, b) => a + b, 0) / score.speedScores.length
         : 0;
