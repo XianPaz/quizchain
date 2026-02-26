@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuizSocket } from "../hooks/useQuizSocket";
 import { COLORS } from "../styles/colors";
 import { getRankEmoji, formatAddress } from "../utils/helpers";
+import { distributeRewards, isMinter } from "../utils/blockchain";
 
 function Leaderboard({ scores, quiz }) {
   const sorted = Object.entries(scores)
@@ -53,23 +54,31 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
   const [questionStats, setQuestionStats] = useState(null);
   const [scores, setScores] = useState({});
   const [allAnswered, setAllAnswered] = useState(false);
+  const [distributingPending, setDistributingPending] = useState(false);
+  const [txHash, setTxHash] = useState(null);
+  const [distributeError, setDistributeError] = useState("");
 
   const { emit } = useQuizSocket(quiz.roomCode, "host", {
+    
     player_joined: ({ players }) => setPlayers(players),
+    
     answer_count: (data) => {
       setAnswerCount(data);
       if (data.answered >= data.total) setAllAnswered(true);
     },
+    
     all_answered: () => setAllAnswered(true),
-    question_stats: (stats) => {
+        question_stats: (stats) => {
       setQuestionStats(stats);
       if (stats.scores) setScores(stats.scores);
       setPhase("showing_stats");
     },
+    
     quiz_ended: ({ scores }) => {
       setScores(scores);
       setPhase("finished");
     },
+    
     rewards_distributed: () => setPhase("distributing"),
   });
 
@@ -104,8 +113,19 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
     onGameEnd();
   };
 
-  const distributeRewards = () => {
-    emit("host_distribute");
+  const distributeRewardsOnChain = async () => {
+    setDistributeError("");
+    setDistributingPending(true);
+    try {
+      const hash = await distributeRewards(scores);
+      setTxHash(hash);
+      emit("host_distribute", { txHash: hash });
+      setPhase("distributing");
+    } catch (err) {
+      setDistributeError(err.message || "Transaction failed");
+    } finally {
+      setDistributingPending(false);
+    }
   };
 
   const question = quiz.questions[currentQ];
@@ -394,15 +414,29 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
             </div>
 
             <button
-              onClick={distributeRewards}
+              onClick={distributeRewardsOnChain}
+              disabled={distributingPending}
               style={{
-                width: "100%", background: COLORS.accent, color: "#000",
+                width: "100%", background: distributingPending ? COLORS.border : COLORS.accent,
+                color: distributingPending ? COLORS.muted : "#000",
                 border: "none", borderRadius: 10, padding: "16px",
-                fontSize: 16, fontWeight: 700, cursor: "pointer",
+                fontSize: 16, fontWeight: 700,
+                cursor: distributingPending ? "not-allowed" : "pointer",
                 fontFamily: "Space Grotesk, sans-serif", marginBottom: 12,
               }}>
-              ⬡ Distribute Rewards to All Students
+              {distributingPending ? "⏳ Waiting for MetaMask confirmation..." : "⬡ Distribute Rewards On-Chain"}
             </button>
+
+            {distributeError && (
+              <div style={{
+                background: `${COLORS.red}11`, border: `1px solid ${COLORS.red}44`,
+                borderRadius: 8, padding: "10px 14px",
+                color: COLORS.red, fontSize: 13, marginBottom: 12,
+              }}>
+                ⚠️ {distributeError}
+              </div>
+            )}
+
             <button
               onClick={handleGameEnd}
               style={{
@@ -419,25 +453,41 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
 
         {/* DISTRIBUTING */}
         {phase === "distributing" && (
-        <div style={{ textAlign: "center", paddingTop: 40 }}>
+          <div style={{ textAlign: "center", paddingTop: 40 }}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, color: COLORS.accent }}>
-            Rewards Sent!
+              Rewards Sent!
             </h2>
-            <p style={{ color: COLORS.muted, marginTop: 8, marginBottom: 32 }}>
-            Students are claiming their QTKN tokens.
+            <p style={{ color: COLORS.muted, marginTop: 8, marginBottom: 16 }}>
+              Tokens minted and sent to all students on Sepolia.
             </p>
+            {txHash && (
+              <a
+                href={`https://sepolia.etherscan.io/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6,
+                  background: `${COLORS.accent}11`, border: `1px solid ${COLORS.accent}33`,
+                  borderRadius: 8, padding: "8px 14px", marginBottom: 24,
+                  fontFamily: "JetBrains Mono, monospace", fontSize: 11,
+                  color: COLORS.accent, textDecoration: "none",
+                }}>
+                🔗 View on Etherscan
+              </a>
+            )}
+            <br />
             <button
-            onClick={handleGameEnd}
-            style={{
+              onClick={handleGameEnd}
+              style={{
                 background: COLORS.accent, color: "#000",
                 border: "none", borderRadius: 10, padding: "14px 32px",
                 fontSize: 15, fontWeight: 700, cursor: "pointer",
                 fontFamily: "Space Grotesk, sans-serif",
-            }}>
-            ← Back to Dashboard
+              }}>
+              ← Back to Dashboard
             </button>
-        </div>
+          </div>
         )}
 
       </div>

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { useQuizSocket } from "../hooks/useQuizSocket";
 import { COLORS } from "../styles/colors";
 import { formatAddress, getRankEmoji } from "../utils/helpers";
+import { getTokenBalance } from "../utils/blockchain";
+import { CONTRACTS } from "../config";
 
 function Leaderboard({ scores, myAddress, quiz }) {
   const sorted = Object.entries(scores)
@@ -60,8 +62,15 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
   const [myScore, setMyScore] = useState(null);
   const [allScores, setAllScores] = useState({});
   const [players, setPlayers] = useState([]);
+  const [balance, setBalance] = useState(null);
   const timerRef = useRef(null);
   const questionOpenedAt = useRef(null);
+  
+  useEffect(() => {
+    if (phase === "claiming" && wallet?.address) {
+      getTokenBalance(wallet.address).then(b => setBalance(parseFloat(b).toFixed(2)));
+    }
+  }, [phase]);
 
   const question = quiz.questions[currentQ];
 
@@ -127,7 +136,6 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
       setPhase("claiming");
     },
 
-    claim_confirmed: () => setPhase("claimed"),
   });
 
   const handleAnswer = (answerIndex) => {
@@ -156,10 +164,6 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
       questionIndex: questionIndex ?? currentQ,
     });
     setPhase("answer_wait");
-  };
-
-  const claimTokens = () => {
-    emit("student_claim", { address: wallet?.address });
   };
 
   const sortedScores = Object.entries(allScores)
@@ -444,49 +448,45 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
         {/* CLAIMING */}
         {phase === "claiming" && myScore && (
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>⬡</div>
+            <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, marginBottom: 8, color: COLORS.accent }}>
-              Rewards Ready!
+              Tokens Received!
             </h2>
             <div style={{
               background: `${COLORS.accent}11`, border: `1px solid ${COLORS.accent}44`,
               borderRadius: 12, padding: 24, marginBottom: 24,
             }}>
-              <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 8 }}>YOU EARNED</div>
+              <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 8 }}>YOU RECEIVED</div>
               <div style={{
                 fontFamily: "Orbitron, sans-serif", fontSize: 42, fontWeight: 900,
                 color: COLORS.accent,
               }}>
                 {myScore.totalTokens} QTKN
               </div>
+              {balance && (
+                <div style={{ fontSize: 13, color: COLORS.muted, marginTop: 8 }}>
+                  Your new balance: <strong style={{ color: COLORS.text }}>{balance} QTKN</strong>
+                </div>
+              )}
               <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 8 }}>
-                Will be minted to {formatAddress(wallet?.address)} on Sepolia
+                Sent to {formatAddress(wallet?.address)} on Sepolia
               </div>
             </div>
-
-            <button
-              onClick={claimTokens}
+            <a
+              href={`https://sepolia.etherscan.io/token/${CONTRACTS.QUIZ_TOKEN}?a=${wallet?.address}`}
+              target="_blank"
+              rel="noopener noreferrer"
               style={{
-                width: "100%", background: COLORS.accent, color: "#000",
-                border: "none", borderRadius: 10, padding: "16px",
-                fontSize: 16, fontWeight: 700, cursor: "pointer",
-                fontFamily: "Space Grotesk, sans-serif", marginBottom: 12,
+                display: "inline-flex", alignItems: "center", gap: 6,
+                background: `${COLORS.accent}11`, border: `1px solid ${COLORS.accent}33`,
+                borderRadius: 8, padding: "8px 14px", marginBottom: 24,
+                fontFamily: "JetBrains Mono, monospace", fontSize: 11,
+                color: COLORS.accent, textDecoration: "none",
               }}>
-              🦊 Claim {myScore.totalTokens} QTKN to MetaMask
-            </button>
-          </div>
-        )}
+              🔗 View on Etherscan
+            </a>
 
-        {/* CLAIMED */}
-        {phase === "claimed" && (
-          <div style={{ textAlign: "center", paddingTop: 40 }}>
-            <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
-            <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, color: COLORS.accent, marginBottom: 8 }}>
-              Tokens Claimed!
-            </h2>
-            <p style={{ color: COLORS.muted, marginBottom: 32 }}>
-              Check your MetaMask wallet on Sepolia.
-            </p>
+            <br />
             <button
               onClick={onPlayAgain}
               style={{
@@ -500,6 +500,7 @@ export default function StudentGame({ quiz, wallet, onPlayAgain, onGameEnd }) {
             </button>
           </div>
         )}
+
       </div>
     </div>
   );

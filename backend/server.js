@@ -143,13 +143,6 @@ io.on("connection", (socket) => {
     console.log(`Rewards distributed in room ${roomCode}`);
   });
 
-  // ── Student claims tokens ──────────────────────────────────────────────────
-  socket.on("student_claim", ({ roomCode, address }) => {
-    // In production: verify on-chain tx hash here
-    socket.emit("claim_confirmed", { address });
-    console.log(`${address} claimed tokens in room ${roomCode}`);
-  });
-
   // ── Play again ─────────────────────────────────────────────────────────────
   socket.on("play_again", ({ roomCode, address }) => {
     socket.emit("redirect_lobby");
