@@ -19,6 +19,8 @@ app.use(cors({ origin: process.env.CLIENT_URL }));
 app.use(express.json());
 app.use("/sessions", sessionRoutes);
 
+app.get("/health", (req, res) => res.json({ status: "ok" }));
+
 // ── Socket.io events ──────────────────────────────────────────────────────────
 io.on("connection", (socket) => {
   console.log("Connected:", socket.id);

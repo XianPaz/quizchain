@@ -1,4 +1,4 @@
-const BASE = "http://localhost:3001";
+const BASE = import.meta.env.VITE_API_URL;
 
 export async function createSession(roomCode, name, questions) {
   const res = await fetch(`${BASE}/sessions/create`, {
