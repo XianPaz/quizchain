@@ -12,6 +12,7 @@ A real-time quiz competition platform where students earn ERC-20 tokens based on
 4. The faster a student answers correctly, the more **QTKN** they earn
 5. After each question the professor shows statistics and the leaderboard before moving on
 6. At the end the professor distributes tokens — one on-chain transaction mints QTKN directly to every student's wallet on Sepolia
+7. Links to transactions are shown so professor could analyze distribution and students earned **QTKN** tokens.
 
 ---
 
