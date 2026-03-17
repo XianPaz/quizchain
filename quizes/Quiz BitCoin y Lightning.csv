@@ -1,0 +1,24 @@
+quiz_name,Bitcoin y Lightning,,,,,,,
+,,,,,,,,
+question,option_a,option_b,option_c,option_d,option_e,option_f,correct,time_limit
+"Sobre el trilema de las blockchain, qué resuelven las blockchain L2?",Descentralización,Escalabilidad,Seguridad,Modular,,,B,20
+"Las piedras Rai de la Isla de Yap, qué características de una moneda tienen?","Portabilidad, Escasez, Durabilidad, Fungibilidad","Escasez, Durabilidad, Fungibilidad","Fungibilidad, Escasez, Durabilidad, Divisibilidad",,,,B,20
+Qué tecnologías blockchain evitan el doble gasto?,Reed peer-to-peer,Estampas de tiempo,Cadena de bloque,Todas las anteriores,,,D,15
+En qué radica la criptografía asimétrica?,Tengo una clave que sirve para encriptar y desencriptar,Tengo una clave privada para encriptar y otra para desencriptar,,,,,B,10
+La mempool que tienen los nodos de la red en un momento dado tienen las mismas transacciones?,Si,No,,,,,B,20
+"Qué es lo que se busca resolver en el método de consenso de ""Prueba de Trabajo""?",Encontrar un hash con ceros al inicio,Encontrar un hash que represente todas las transacciones del bloque,Encontrar un hash que represente un nonce,Encontrar un hash que represente el hash del bloque anterior,Todas las anteriores,,E,25
+Puedo mandar 3000 BTC por Lightning?,"No, porque no hay suficiente liquidez en la red","Si, pero demorará",,,,,A,15
+Qué es el halving?,"Aumentar al dificultad del acertijo criptográfico para la ""Prueba de Trabajo""",Emitir la mitad de la recompensa por bloque minado,,,,,B,15
+Qué recompensas tiene un minero en bitcoin?,Los fees de las transacciones del bloque,Los fees de las transacciones del bloque y el coinbase,,,,,B,15
+El Coinbase siempre va a existir?,"Si, pero con en algún momento no significará ingreso para el minero","No, no existirá cuando la recompensa del bloque sea inferior a 1 satoshi",,,,,A,20
+Por qué a las cold wallet se las llama asi?,"Porque las claves las tiene uno solamente, no se comparten.",Porque no están conectadas a internet,Porque las clave privada se fracciona en varias partes,,,,B,15
+Bretton Woods sigue vigente?,"Si, cada dólar emitido es respaldado en oro","No, en 1971, durante el gobierno de Nixon se eliminó",,,,,B,15
+"Si se te pierden tus frases semillas, puedes recuperar tu wallet self-custodial?","No, es imposible recuperar esos fondos","Sí, contactando al exchange",,,,,A,20
+"Si tengo una cold wallet, puedo acceder a través de una hot wallet a mi cuenta?","Si, siempre y cuando tenga mis frases semillas.","No, una cuenta creada con una cold wallet sólo puede ser usada con ese tipo de wallet",,,,,A,20
+Si tengo BTC y quiero comprar ETH cómo hago?,Cambio en un exchange,Uso un bridge de Bitcoin a Ethereum,Ambas alternativas,,,,C,20
+En qué casos usaría un Exchange?,Para cambiar fácilmente cripto,Para comprar critpo con fiat,Para hacer staking,Las dos primeras opciones,Las 3 primeras opciones,,E,30
+Qué diferencia hay entre un hard fork y un soft fork,Un hard fork tiene cambios más drásticos mientras las soft forks tienen mejoras con menos impacto,"Un hard fork provoca que no puedan convivir nodos con la versión vieja y nueva en la misma red, mientras que en los soft forks ambos pueden convivir",Ambas opciones,,,,C,20
+Qué pasa cuando se hace un hard fork y algunos nodos deciden no cambiar?,No pasa nada,"Se crean dos blockchains distintas, uno con las reglas nuevas y otro con las reglas vigentes",,,,,B,15
+Por qué se dice que bitcoin es deflacionaria?,Porque no se puede emitir más de 21M,"Porque se emite solo cuando se mina un bloque y luego del 2140 aproximadamente, no se emitirá más",Hay pérdida de BTC en circulación por claves perdidas,Hay una demanda creciente sobre una oferta fija,Todas las anteriores,,E,25
+"Una transacción hecha en lightning, se refleja en bitcoin?",Solo cuando creo y cierro un canal,Solo cuando no uso canales,Ambas respuestas,,,,A,15
+Para qué se usa el protocolo onion routing de Lightning?,Para encontrar los caminos de mayor liquidez,Para esconder los detalles del envío,,,,,B,15

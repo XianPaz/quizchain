@@ -1,0 +1,8 @@
+quiz_name,Prueba,,,,,,,
+,,,,,,,,
+question,option_a,option_b,option_c,option_d,option_e,option_f,correct,time_limit
+"Sobre el trilema de las blockchain, qué resuelven las blockchain L2?",Descentralización,Escalabilidad,Seguridad,Modular,,,B,20
+"Las piedras Rai de la Isla de Yap, qué características de una moneda tienen?","Portabilidad, Escasez, Durabilidad, Fungibilidad","Escasez, Durabilidad, Fungibilidad","Fungibilidad, Escasez, Durabilidad, Divisibilidad",,,,B,20
+Qué tecnologías blockchain evitan el doble gasto?,Reed peer-to-peer,Estampas de tiempo,Cadena de bloque,Todas las anteriores,,,D,15
+En qué radica la criptografía asimétrica?,Tengo una clave que sirve para encriptar y desencriptar,Tengo una clave privada para encriptar y otra para desencriptar,,,,,B,10
+La mempool que tienen los nodos de la red en un momento dado tienen las mismas transacciones?,Si,No,,,,,B,20
