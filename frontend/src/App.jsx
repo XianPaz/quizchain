@@ -13,7 +13,7 @@ import socket from "./socket";
 export default function App() {
   const [view, setView]           = useState("landing");
   const [activeQuiz, setActiveQuiz] = useState(null);
-  const { wallet, connect, disconnect } = useWallet();
+  const { wallet, connect, disconnect, error: walletError, connecting } = useWallet();
   const [role, setRole] = useState(null); // "host" | "student"
   const [activeSessions, setActiveSessions] = useState({});
   const [nickname, setNickname] = useState("");
@@ -94,6 +94,8 @@ export default function App() {
         wallet={wallet} 
         onStartQuiz={handleStartQuiz} 
         onBack={() => setView("landing")} 
+        walletError={walletError}
+        connecting={connecting}
       />
     );
 
@@ -105,6 +107,8 @@ export default function App() {
         onBack={() => setView("landing")}
         onConnectWallet={connect}
         activeSessions={activeSessions}
+        walletError={walletError}
+        connecting={connecting}
       />
     );
 

@@ -3,24 +3,27 @@ import { COLORS } from "../styles/colors";
 import { useState } from "react";
 import { formatAddress } from "../utils/helpers";
 
-export default function JoinView({ wallet, onJoin, onBack, onConnectWallet, activeSessions }) {
+export default function JoinView({ wallet, onJoin, onBack, onConnectWallet, activeSessions, walletError, connecting }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [joining, setJoining] = useState(false);
   const [nickname, setNickname] = useState("");
 
   const handleJoin = async () => {
+    // Validate wallet
     if (!wallet?.address) {
-      setError("Please connect your MetaMask wallet before joining.");
+      setError("Please connect your MetaMask wallet first.");
       return;
     }
-    
-    const trimmed = code.trim().toUpperCase();
-
+    if (!/^0x[0-9a-fA-F]{40}$/.test(wallet.address)) {
+      setError("Wallet address is invalid. Please disconnect and reconnect MetaMask.");
+      return;
+    }
     if (!nickname.trim()) {
       setError("Please enter a nickname.");
       return;
     }
+    const trimmed = code.trim().toUpperCase();
     if (trimmed.length < 4) {
       setError("Room code is too short.");
       return;
@@ -28,7 +31,6 @@ export default function JoinView({ wallet, onJoin, onBack, onConnectWallet, acti
 
     setJoining(true);
     const result = await onJoin(trimmed, nickname.trim());
-
     if (result?.error) {
       setError(result.error);
       setJoining(false);
@@ -61,9 +63,23 @@ export default function JoinView({ wallet, onJoin, onBack, onConnectWallet, acti
             <p style={{ color: COLORS.yellow, fontSize: 13, marginBottom: 12 }}>
               ⚠️ Connect your wallet first to earn QTKN rewards
             </p>
-            <button className="btn btn-primary" style={{ width: "100%" }} onClick={onConnectWallet}>
-              🦊 Connect MetaMask
+            <button
+              className="btn btn-primary"
+              style={{ width: "100%" }}
+              onClick={onConnectWallet}
+              disabled={connecting}
+            >
+              {connecting ? "Connecting..." : "🦊 Connect MetaMask"}
             </button>
+            {walletError && (
+              <div style={{
+                marginTop: 10, color: COLORS.red, fontSize: 12,
+                background: `${COLORS.red}11`, border: `1px solid ${COLORS.red}33`,
+                borderRadius: 6, padding: "8px 10px",
+              }}>
+                ⚠️ {walletError}
+              </div>
+            )}
           </div>
         ) : (
           <div className="card" style={{
@@ -71,12 +87,12 @@ export default function JoinView({ wallet, onJoin, onBack, onConnectWallet, acti
             background: "#00ff8808", textAlign: "left",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ width: 8, height: 8, borderRadius: "50%", background: COLORS.accent, display: "inline-block", boxShadow: `0 0 6px ${COLORS.accent}` }} />
-              <span style={{ fontFamily: "JetBrains Mono", fontSize: 13 }}>
+              <span style={{
+                width: 8, height: 8, borderRadius: "50%", background: COLORS.accent,
+                display: "inline-block", boxShadow: `0 0 6px ${COLORS.accent}`,
+              }} />
+              <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 13, color: COLORS.text }}>
                 {formatAddress(wallet.address)}
-              </span>
-              <span style={{ marginLeft: "auto" }} className="token-badge">
-                ⬡ {wallet.balance} QTKN
               </span>
             </div>
           </div>

@@ -4,7 +4,7 @@ import { styles } from "../styles/styles";
 import WalletBar from "../components/WalletBar";
 import { parseQuizCSV } from "../utils/parseQuizCSV";
 
-export default function HostDashboard({ wallet, onStartQuiz, onBack }) {
+export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError, connecting }) {
   const [tab, setTab] = useState("upload");
   const [questions, setQuestions] = useState([]);
   const [quizName, setQuizName] = useState("");
@@ -61,7 +61,13 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack }) {
           <button onClick={onBack} className="btn btn-secondary btn-sm">← Back</button>
           <span className="brand" style={{ fontSize: 16, color: COLORS.accent }}>HOST DASHBOARD</span>
         </div>
-        <WalletBar wallet={wallet} onConnect={() => {}} onDisconnect={() => {}} />
+        <WalletBar
+          wallet={wallet}
+          onConnect={() => {}}
+          onDisconnect={() => {}}
+          error={walletError}
+          connecting={connecting}
+        />
       </div>
 
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "24px 20px" }}>
