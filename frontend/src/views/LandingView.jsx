@@ -3,7 +3,7 @@ import { styles } from "../styles/styles";
 import { COLORS } from "../styles/colors";
 import React from "react";
 
-export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectWallet, onDisconnect, walletError, connecting }) {
+export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectWallet, onDisconnect, walletError, minterError, connecting }) {
   return (
     <div className="grid-bg noise" style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <style>{styles}</style>
@@ -39,7 +39,7 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
         flex: 1, display: "flex", flexDirection: "column", alignItems: "center",
         justifyContent: "center", padding: "80px 24px", textAlign: "center",
       }}>
-        <div className="slide-up" style={{ animationDelay: "0.1s", opacity: 0 }}>
+        <div className="slide-up" style={{ animationDelay: "0.1s" }}>
           <div style={{
             display: "inline-flex", alignItems: "center", gap: 8,
             background: `${COLORS.accent}11`, border: `1px solid ${COLORS.accent}33`,
@@ -51,7 +51,7 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
           </div>
         </div>
 
-        <div className="slide-up" style={{ animationDelay: "0.2s", opacity: 0 }}>
+        <div className="slide-up" style={{ animationDelay: "0.2s" }}>
           <h1 style={{
             fontFamily: "Orbitron", fontWeight: 900, fontSize: "clamp(40px, 7vw, 80px)",
             lineHeight: 1.1, marginBottom: 24, letterSpacing: "-1px",
@@ -67,7 +67,7 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
           </h1>
         </div>
 
-        <div className="slide-up" style={{ animationDelay: "0.3s", opacity: 0 }}>
+        <div className="slide-up" style={{ animationDelay: "0.3s" }}>
           <p style={{
             color: COLORS.muted, fontSize: 18, maxWidth: 520, lineHeight: 1.6, marginBottom: 48,
           }}>
@@ -78,21 +78,34 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
         </div>
 
         <div className="slide-up" style={{
-          animationDelay: "0.4s", opacity: 0,
-          display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center",
+          animationDelay: "0.4s", 
+          display: "flex", flexDirection: "column",
+          alignItems: "center", gap: 12,
         }}>
-          <button className="btn btn-primary btn-lg" onClick={onHostQuiz}
-            style={{ fontSize: 16, letterSpacing: 1 }}>
-            🎯 Host a Quiz
-          </button>
-          <button className="btn btn-secondary btn-lg" onClick={onJoinQuiz}>
-            👥 Join a Quiz
-          </button>
+          <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center" }}>
+            <button className="btn btn-primary btn-lg" onClick={onHostQuiz}
+              style={{ fontSize: 16, letterSpacing: 1 }}>
+              🎯 Host a Quiz
+            </button>
+            <button className="btn btn-secondary btn-lg" onClick={onJoinQuiz}>
+              👥 Join a Quiz
+            </button>
+          </div>
+
+          {minterError && (
+            <div style={{
+              background: `${COLORS.red}11`, border: `1px solid ${COLORS.red}44`,
+              borderRadius: 8, padding: "10px 16px", maxWidth: 380, width: "100%",
+              color: COLORS.red, fontSize: 13, textAlign: "center",
+            }}>
+              ⚠️ {minterError}
+            </div>
+          )}
         </div>
 
         {/* Stats row */}
         <div className="slide-up" style={{
-          animationDelay: "0.5s", opacity: 0,
+          animationDelay: "0.5s", 
           display: "flex", gap: 40, marginTop: 80, flexWrap: "wrap", justifyContent: "center",
         }}>
           {[
@@ -122,7 +135,7 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
             { icon: "📝", title: "Custom Quizzes", desc: "Hosts create quizzes with custom questions, time limits, and answer choices." },
           ].map((f) => (
             <div key={f.title} className="card slide-up" style={{
-              textAlign: "left", animationDelay: "0.6s", opacity: 0,
+              textAlign: "left", animationDelay: "0.6s", 
               border: `1px solid ${COLORS.border}`,
             }}>
               <div style={{ fontSize: 28, marginBottom: 10 }}>{f.icon}</div>

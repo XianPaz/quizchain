@@ -5,6 +5,7 @@ import HostDashboard  from "./views/HostDashboard";
 import JoinView       from "./views/JoinView";
 import HostGame    from "./views/HostGame";
 import StudentGame from "./views/StudentGame";
+import { isMinter } from "./utils/blockchain";
 import { SAMPLE_QUESTIONS } from "./constants/sampleData";
 
 import { createSession, validateSession } from "./api";
@@ -17,6 +18,30 @@ export default function App() {
   const [role, setRole] = useState(null); // "host" | "student"
   const [activeSessions, setActiveSessions] = useState({});
   const [nickname, setNickname] = useState("");
+  const [minterError, setMinterError] = useState("");
+
+  const handleHostQuiz = async () => {
+    setMinterError("");
+
+    if (!wallet?.address) {
+      console.log("no wallet");
+      setMinterError("Please connect your MetaMask wallet first.");
+      return;
+    }
+
+    try {
+      const allowed = await isMinter(wallet.address);
+      console.log("isMinter result:", allowed);
+      if (!allowed) {
+        setMinterError("Your wallet is not authorized to host quizzes. Ask the contract owner to add you as a minter.");
+        return;
+      }
+      setView("host");
+    } catch (e) {
+      console.log("error:", e);
+      setMinterError("Could not verify wallet authorization. Check your connection and try again.");
+    }
+  };
 
   const handleStartQuiz = async (quizData) => {
     const roomCode = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -115,7 +140,7 @@ export default function App() {
   return (
     <LandingView 
       wallet={wallet} 
-      onHostQuiz={() => setView("host")} 
+      onHostQuiz={handleHostQuiz} 
       onJoinQuiz={() => setView("join")} 
       onConnectWallet={connect} 
       onDisconnect={disconnect}
