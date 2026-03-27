@@ -7,7 +7,7 @@ import { distributeRewards, isMinter } from "../utils/blockchain";
 function Leaderboard({ scores, players, quiz }) {
   const sorted = Object.entries(scores)
     .map(([address, s]) => ({ address, ...s }))
-    .sort((a, b) => b.correct - a.correct || 0);
+    .sort((a, b) => (b.totalTokens ?? 0) - (a.totalTokens ?? 0));
 
   // Build address → nickname map from players list
   const nicknameMap = {};
