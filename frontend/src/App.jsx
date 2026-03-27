@@ -118,6 +118,9 @@ export default function App() {
       onHostQuiz={() => setView("host")} 
       onJoinQuiz={() => setView("join")} 
       onConnectWallet={connect} 
+      onDisconnect={disconnect}
+      walletError={walletError}
+      connecting={connecting}
     />
   );
 }

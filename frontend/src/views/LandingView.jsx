@@ -3,7 +3,7 @@ import { styles } from "../styles/styles";
 import { COLORS } from "../styles/colors";
 import React from "react";
 
-export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectWallet, walletError, connecting }) {
+export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectWallet, onDisconnect, walletError, connecting }) {
   return (
     <div className="grid-bg noise" style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <style>{styles}</style>
@@ -28,7 +28,7 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
         <WalletBar
           wallet={wallet}
           onConnect={onConnectWallet}
-          onDisconnect={() => {}}
+          onDisconnect={onDisconnect}
           error={walletError}
           connecting={connecting}
         />
