@@ -145,6 +145,7 @@ export default function App() {
       onConnectWallet={connect} 
       onDisconnect={disconnect}
       walletError={walletError}
+      minterError={minterError}
       connecting={connecting}
     />
   );
