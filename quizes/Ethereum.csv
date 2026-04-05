@@ -1,0 +1,23 @@
+quiz_name,Ethereum,,,,,,,
+,,,,,,,,
+question,option_a,option_b,option_c,option_d,option_e,option_f,correct,time_limit
+Qué blockchain está mas asociada a la reserva de valor?,Bitcoin,Ethereum,Ambas,,,,A,20
+Qué blockchain se usa principalmente como un sistema de pagos?,Bitcoin,Ethereum,Ambas,,,,A,20
+Qué blockchain permite escribir Dapps?,Bitcoin,Ethereum,Ambas,,,,B,20
+En qué blockchain se pueden usar distintos tokens?,En Bitcoin,En Ethereum,Ambas,,,,B,20
+Qué protocolo de consenso utiliza Ethereum,Prueba de Trabajo (PoW),Prueba de Participación (PoS),,,,,B,20
+Cómo funciona la prueba de participación (Proof of Stake) en Ethereum?,Los mineros compiten resolviendo problemas matemáticos para validar bloques.,Los validadores bloquean (stakean) ETH y son seleccionados para proponer y validar bloques según su participación.,Los usuarios deben quemar (burn) ETH para poder validar transacciones en la red.,Los usuarios deben quemar (burn) ETH para poder validar transacciones en la red.,,,B,30
+Que es un smart-contract?,Es un programa que contiene reglas que se ejecutan automáticamente,Es un programa que esta alojado en una blockchain,Todas las anteriores,,,,C,25
+"Podría escribir un smart contract para vender mi casa, con las condiciones que yo acuerde con el comprador?","Si, y aseguro que se cumplen las condiciones previstas.","No, sólo me permite manejar assets de la blockchain",,,,,A,25
+Qué es la EVM de Ethereum?,Un token utilizado para pagar comisiones dentro de la red Ethereum.,Un protocolo de consenso que valida bloques en Ethereum.,Una máquina virtual que ejecuta contratos inteligentes en la red Ethereum,Una billetera digital utilizada para almacenar ETH y otros tokens.,,,C,30
+Cómo se crea un smart-contract para Ethereum?,"Se definen las reglas, se programa, se compila y se despliega en la blockchain.","Se definen las reglas, se programa y se despliega en la blockchain.",,,,,A,25
+Qué componente ejecuta el código de un smart-contract?,La blockchain,Un nodo de la blockchain,La EVM que corre en un nodo,,,,C,25
+Qué hace la compilación?,Graba el código en la blockchain,Convierte el código que escribe el programador a código que entiende la EVM (bytecode),Lee el código de la blockchain,,,,B,25
+Cuáles son ejemplos correctos de transacciones en Ethereum?,Crear un token,Hacer un swap,Transferir un token,Ver mi balance,Crear un NFT,Todas las anteriores,F,30
+Qué tipos de transacciones existen en Ethereum?,Crear un smart-contract,Llamar a un smart-contract,Ambas,,,,C,25
+"Dónde se guarda el smart-contract, una vez hecho el despliegue?","Como cualquier transacción, se replica en todos los nodos.",En el nodo que recibió la transacción de despliegue.,,,,,A,25
+Qué es una Descentralized Application o DAPP?,Es una aplicación que se puede conectar con una wallet,Es una aplicación que interactúa con contratos inteligentes,Ambas opciones,,,,C,25
+Cuál es la principal diferencia entre TradFi y DeFi?,Que en DeFi no hay instituciones que regulan y controlan.,Que en DeFi se confía en el código y sus auditorías que son públicas.,Que en DeFi la custodia es del usuario,Todas las anteriores,,,D,25
+Por qué se dice que el mundo Crypto y DeFi se habita en el Dark Forest?,"Porque hay cazadores ""armados"" al acecho",Porque la identidad de las personas está preservada,Todas las anteriores,,,,A,20
+Cuál es el trilema de la stablecoins,"Escalabilidad, Descentralización y Seguridad","Estabilidad/peg, Descentralización y Eficiencia de Capital",,,,,B,25
+Qué es la Eficiencia de Capital en las Stablecoins?,La capacidad de una stablecoin de procesar transacciones más rápido que otras criptomonedas.,El grado en que una stablecoin mantiene su precio estable frente a la volatilidad del mercado.,La cantidad de capital que debe bloquearse como respaldo para emitir una determinada cantidad de stablecoins.,El nivel de descentralización del sistema que emite la stablecoin.,,,C,30
