@@ -33,11 +33,39 @@ io.on("connection", (socket) => {
     socket.data.address = player?.address;
 
     if (role === "student" && player) {
-      const session = store.addPlayer(roomCode, { ...player, socketId: socket.id });
-      if (session) {
-        io.to(roomCode).emit("player_joined", { players: session.players });
+      const session = store.get(roomCode);
+      if (!session) return;
+
+      const existing = session.players.find(p => p.address === player.address);
+
+      if (existing) {
+        // Reconnecting student — update socket ID
+        store.reconnectPlayer(roomCode, player.address, socket.id);
+
+        // Build resume payload
+        const resumePayload = {
+          status: session.status,
+          currentQuestion: session.currentQuestion,
+          scores: store.getScores(roomCode),
+          players: session.players,
+          alreadyAnswered: !!session.answers[session.currentQuestion]?.[player.address],
+        };
+
+        // If showing_stats, include the stats
+        if (session.status === "showing_stats") {
+          resumePayload.questionStats = store.getQuestionStats(roomCode, session.currentQuestion);
+        }
+
+        socket.emit("session_resumed", resumePayload);
+
+      } else {
+        // New student joining for first time
+        const updated = store.addPlayer(roomCode, { ...player, socketId: socket.id });
+        if (updated) {
+          io.to(roomCode).emit("player_joined", { players: updated.players });
+        }
       }
-    }
+    };
 
     if (role === "host") {
       const session = store.get(roomCode);

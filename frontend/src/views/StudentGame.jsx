@@ -139,6 +139,37 @@ export default function StudentGame({ quiz, wallet, nickname, onPlayAgain, onGam
       setPhase("claiming");
     },
 
+    session_resumed: ({ status, currentQuestion, scores, players, alreadyAnswered, questionStats }) => {
+      // Restore players and scores
+      setPlayers(players);
+      setAllScores(scores);
+      setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
+
+      if (status === "waiting" || status === "active") {
+        setPhase("lobby_wait");
+
+      } else if (status === "question_open") {
+        // Never resume answering — too complex to sync timer
+        // If already answered just wait, if not treat as missed
+        setAnswered(alreadyAnswered);
+        setPhase("answer_wait");
+
+      } else if (status === "showing_stats") {
+        if (questionStats) setQuestionStats(questionStats);
+        setPhase("viewing_stats");
+
+      } else if (status === "finished") {
+        const mine = scores[wallet?.address];
+        setMyScore(mine || null);
+        setPhase("finished");
+
+      } else if (status === "claiming") {
+        const mine = scores[wallet?.address];
+        setMyScore(mine || null);
+        setPhase("claiming");
+      }
+    },
+
   });
 
   const handleAnswer = (answerIndex) => {

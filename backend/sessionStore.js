@@ -115,6 +115,16 @@ module.exports = {
     });
   },
 
+  reconnectPlayer(roomCode, address, newSocketId) {
+    const s = sessions[roomCode];
+    if (!s) return null;
+    const player = s.players.find(p => p.address === address);
+    if (player) {
+      player.socketId = newSocketId;
+    }
+    return s;
+  },
+
   setStatus(roomCode, status) {
     if (!sessions[roomCode]) return null;
     sessions[roomCode].status = status;

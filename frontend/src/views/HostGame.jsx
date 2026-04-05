@@ -81,6 +81,36 @@ export default function HostGame({ quiz, wallet, onGameEnd }) {
     },
     
     rewards_distributed: () => setPhase("distributing"),
+
+    session_resumed: ({ status, currentQuestion, scores, players, questionStats }) => {
+      // Restore players and scores
+      setPlayers(players);
+      setScores(scores);
+      setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
+
+      if (status === "waiting") {
+        setPhase("lobby");
+
+      } else if (status === "active") {
+        setPhase("lobby");
+
+      } else if (status === "question_open") {
+        setPhase("question_active");
+        setAllAnswered(false);
+        setAnswerCount({ answered: 0, total: players.length });
+
+      } else if (status === "showing_stats") {
+        if (questionStats) setQuestionStats(questionStats);
+        setPhase("showing_stats");
+
+      } else if (status === "finished") {
+        setPhase("finished");
+
+      } else if (status === "distributing") {
+        setPhase("distributing");
+      }
+    },
+
   });
 
   const startQuiz = () => {
