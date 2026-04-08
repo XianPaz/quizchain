@@ -1,5 +1,5 @@
-require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
+require("@nomicfoundation/hardhat-toolbox");
 
 module.exports = {
   solidity: "0.8.20",
@@ -9,4 +9,9 @@ module.exports = {
       accounts: [process.env.PRIVATE_KEY],
     },
   },
+
+  etherscan: {
+    apiKey: process.env.ETHERSCAN_API_KEY, 
+  },
+
 };
