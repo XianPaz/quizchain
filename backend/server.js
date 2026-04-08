@@ -68,9 +68,24 @@ io.on("connection", (socket) => {
     };
 
     if (role === "host") {
+      console.log("entering host branch");
       const session = store.get(roomCode);
-      if (session) socket.emit("session_state", session);
-    }
+      console.log("session found:", !!session);
+      if (session) {
+        store.reconnectHost(roomCode, socket.id);
+        console.log("emitting session_resumed to host");
+        socket.emit("session_resumed", {
+          status: session.status,
+          currentQuestion: session.currentQuestion,
+          scores: store.getScores(roomCode),
+          players: session.players,
+          questionStats: session.status === "showing_stats"
+            ? store.getQuestionStats(roomCode, session.currentQuestion)
+            : null,
+        });
+      }
+    };
+
   });
 
   // ── Host starts the quiz ───────────────────────────────────────────────────
@@ -132,6 +147,7 @@ io.on("connection", (socket) => {
 
   // ── Host shows stats for current question ─────────────────────────────────
   socket.on("host_show_stats", ({ roomCode, questionIndex }) => {
+    console.log("host_show_stats received:", { roomCode, questionIndex });
     store.calculateScores(roomCode, questionIndex);
     const stats = store.getQuestionStats(roomCode, questionIndex);
     store.setStatus(roomCode, "showing_stats");

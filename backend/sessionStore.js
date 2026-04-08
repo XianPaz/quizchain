@@ -125,6 +125,13 @@ module.exports = {
     return s;
   },
 
+  reconnectHost(roomCode, newSocketId) {
+    const s = sessions[roomCode];
+    if (!s) return null;
+    s.hostSocketId = newSocketId;
+    return s;
+  },
+  
   setStatus(roomCode, status) {
     if (!sessions[roomCode]) return null;
     sessions[roomCode].status = status;

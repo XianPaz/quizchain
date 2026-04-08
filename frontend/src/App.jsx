@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWallet } from "./hooks/useWallet";
 import LandingView    from "./views/LandingView";
 import HostDashboard  from "./views/HostDashboard";
 import JoinView       from "./views/JoinView";
 import HostGame    from "./views/HostGame";
 import StudentGame from "./views/StudentGame";
+import RejoinView from "./views/RejoinView";
 import { isMinter } from "./utils/blockchain";
+import { loadSession, saveSession, clearSession } from "./hooks/useSessionPersistence";
 import { SAMPLE_QUESTIONS } from "./constants/sampleData";
 
 import { createSession, validateSession } from "./api";
@@ -19,6 +21,48 @@ export default function App() {
   const [activeSessions, setActiveSessions] = useState({});
   const [nickname, setNickname] = useState("");
   const [minterError, setMinterError] = useState("");
+  const [savedSession, setSavedSession] = useState(null);
+  const [resumeData, setResumeData] = useState(null);
+
+  useEffect(() => {
+    try {
+      const saved = loadSession();
+      if (!saved) return;
+
+      validateSession(saved.roomCode).then(result => {
+        if (!result.success) {
+          clearSession();
+          return;
+        }
+
+        if (saved.role === "student") {
+          // Students auto-reconnect
+          socket.connect();
+          socket.once("connect", () => {
+            socket.emit("join_room", {
+              roomCode: saved.roomCode,
+              player: { address: saved.walletAddress, name: saved.nickname },
+              role: "student",
+            });
+          });
+          setActiveQuiz(saved.quizData);
+          setRole("student");
+          if (saved.nickname) setNickname(saved.nickname);
+          setView("game");
+
+        } else if (saved.role === "host") {
+          // Professors see the rejoin screen first
+          setSavedSession(saved);
+          setView("rejoin");
+        }
+
+      }).catch(() => {
+        clearSession();
+      });
+    } catch (e) {
+      clearSession();
+    }
+  }, []);
 
   const handleHostQuiz = async () => {
     setMinterError("");
@@ -57,6 +101,13 @@ export default function App() {
       socket.emit("join_room", { roomCode, role: "host" });
     });
 
+    saveSession({
+      roomCode,
+      quizData,
+      role: "host",
+      walletAddress: wallet?.address,
+    });
+        
     setActiveQuiz({ ...quizData, roomCode });
     setRole("host");
     setView("game");
@@ -92,6 +143,37 @@ export default function App() {
     return { success: true };
   };
 
+  const handleRejoin = () => {
+    if (!savedSession) return;
+
+    socket.connect();
+    socket.once("connect", () => {
+      socket.once("session_resumed", (data) => {
+        setResumeData(data);
+        setActiveQuiz({ ...savedSession.quizData, roomCode: savedSession.roomCode });
+        setRole("host");
+        setView("game");
+      });
+
+      socket.emit("join_room", {
+        roomCode: savedSession.roomCode,
+        role: "host",
+        player: undefined,
+      });
+    });
+
+    setActiveQuiz(savedSession.quizData);
+    setRole("host");
+    setView("game");
+  };
+
+  const handleLeaveSession = () => {
+    clearSession();
+    setSavedSession(null);
+    setView("landing");
+  };
+
+
   if (view === "game" && activeQuiz) {
     if (role === "host")
       return (
@@ -99,6 +181,7 @@ export default function App() {
           quiz={activeQuiz}
           wallet={wallet}
           onGameEnd={() => { setView("landing"); setActiveQuiz(null); }}
+          resumeData={resumeData}
         />
       );
 
@@ -137,6 +220,16 @@ export default function App() {
       />
     );
 
+  if (view === "rejoin" && savedSession)
+  return (
+    <RejoinView
+      savedSession={savedSession}
+      wallet={wallet}
+      onRejoin={handleRejoin}
+      onLeave={handleLeaveSession}
+    />
+  );
+  
   return (
     <LandingView 
       wallet={wallet} 
@@ -149,4 +242,5 @@ export default function App() {
       connecting={connecting}
     />
   );
+
 }
