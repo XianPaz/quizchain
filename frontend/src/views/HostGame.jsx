@@ -86,7 +86,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
   useEffect(() => {
     if (!resumeData) return;
 
-    const { status, currentQuestion, scores, players, questionStats, answeredCount } = resumeData;
+    const { status, currentQuestion, scores, players, questionStats, answeredCount, txHash } = resumeData;
 
     setPlayers(players || []);
     setScores(scores || {});
@@ -106,6 +106,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
     } else if (status === "finished") {
       setPhase("finished");
     } else if (status === "distributing") {
+      if (txHash) setTxHash(txHash);
       setPhase("distributing");
     }
   }, [resumeData]);

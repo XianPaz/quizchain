@@ -84,6 +84,7 @@ io.on("connection", (socket) => {
           scores: store.getScores(roomCode),
           players: session.players,
           answeredCount,
+          txHash: session.txHash || null,
           questionStats: session.status === "showing_stats"
             ? store.getQuestionStats(roomCode, session.currentQuestion)
             : null,
@@ -187,9 +188,11 @@ io.on("connection", (socket) => {
   });
 
   // ── Host distributes rewards ───────────────────────────────────────────────
-  socket.on("host_distribute", ({ roomCode }) => {
+  socket.on("host_distribute", ({ roomCode, txHash }) => {
+    store.setStatus(roomCode, "distributing");
+    const session = store.get(roomCode);
+    if (session) session.txHash = txHash || null;
     const scores = store.getScores(roomCode);
-    // In production: call QuizGame.finalizeAndDistribute() here via ethers.js
     io.to(roomCode).emit("rewards_distributed", { scores });
     console.log(`Rewards distributed in room ${roomCode}`);
   });
