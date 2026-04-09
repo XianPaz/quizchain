@@ -74,11 +74,16 @@ io.on("connection", (socket) => {
       if (session) {
         store.reconnectHost(roomCode, socket.id);
         console.log("emitting session_resumed to host");
+        const answeredCount = session.currentQuestion >= 0
+          ? Object.keys(session.answers[session.currentQuestion] || {}).length
+          : 0;
+
         socket.emit("session_resumed", {
           status: session.status,
           currentQuestion: session.currentQuestion,
           scores: store.getScores(roomCode),
           players: session.players,
+          answeredCount,
           questionStats: session.status === "showing_stats"
             ? store.getQuestionStats(roomCode, session.currentQuestion)
             : null,

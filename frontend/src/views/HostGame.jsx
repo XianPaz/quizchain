@@ -86,7 +86,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
   useEffect(() => {
     if (!resumeData) return;
 
-    const { status, currentQuestion, scores, players, questionStats } = resumeData;
+    const { status, currentQuestion, scores, players, questionStats, answeredCount } = resumeData;
 
     setPlayers(players || []);
     setScores(scores || {});
@@ -96,8 +96,10 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
       setPhase("lobby");
     } else if (status === "question_open") {
       setPhase("question_active");
-      setAllAnswered(false);
-      setAnswerCount({ answered: 0, total: players.length });
+      const answered = answeredCount ?? 0;
+      const total = players.length;
+      setAnswerCount({ answered, total });
+      setAllAnswered(answered >= total && total > 0);
     } else if (status === "showing_stats") {
       if (questionStats) setQuestionStats(questionStats);
       setPhase("showing_stats");
