@@ -6,6 +6,18 @@ export function useWallet() {
   const [error, setError] = useState("");
   const [connecting, setConnecting] = useState(false);
 
+  // Silently restore wallet on page load if MetaMask is already authorized
+  useEffect(() => {
+    if (!window.ethereum) return;
+    window.ethereum.request({ method: "eth_accounts" })
+      .then(accounts => {
+        if (accounts.length > 0 && isValidAddress(accounts[0])) {
+          setWallet({ address: accounts[0], balance: 0 });
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Listen for account changes in MetaMask
   useEffect(() => {
     if (!window.ethereum) return;

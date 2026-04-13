@@ -54,7 +54,7 @@ function Leaderboard({ scores, players, myAddress, quiz }) {
   );
 };
 
-export default function StudentGame({ quiz, wallet, nickname, onPlayAgain, onGameEnd }) {
+export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlayAgain, onGameEnd }) {
   const [phase, setPhase] = useState("lobby_wait");
   // lobby_wait | answering | answer_wait | viewing_stats | finished | claiming | claimed
   const [currentQ, setCurrentQ] = useState(0);
@@ -62,13 +62,36 @@ export default function StudentGame({ quiz, wallet, nickname, onPlayAgain, onGam
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [answered, setAnswered] = useState(false);
   const [questionStats, setQuestionStats] = useState(null);
-  const [myScore, setMyScore] = useState(null);
   const [allScores, setAllScores] = useState({});
+  const myScore = allScores[wallet?.address] || null;
   const [players, setPlayers] = useState([]);
   const [balance, setBalance] = useState(null);
   const timerRef = useRef(null);
   const questionOpenedAt = useRef(null);
   
+  useEffect(() => {
+    if (!resumeData) return;
+    const { status, currentQuestion, scores, players, alreadyAnswered, questionStats } = resumeData;
+
+    setPlayers(players || []);
+    setAllScores(scores || {});
+    setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
+
+    if (status === "waiting" || status === "active") {
+      setPhase("lobby_wait");
+    } else if (status === "question_open") {
+      setAnswered(alreadyAnswered || false);
+      setPhase("answer_wait");
+    } else if (status === "showing_stats") {
+      if (questionStats) setQuestionStats(questionStats);
+      setPhase("viewing_stats");
+    } else if (status === "finished") {
+      setPhase("finished");
+    } else if (status === "claiming") {
+      setPhase("claiming");
+    }
+  }, [resumeData]);
+
   useEffect(() => {
     if (phase === "claiming" && wallet?.address) {
       getTokenBalance(wallet.address).then(b => setBalance(parseFloat(b).toFixed(2)));
@@ -120,52 +143,35 @@ export default function StudentGame({ quiz, wallet, nickname, onPlayAgain, onGam
 
     quiz_ended: ({ scores }) => {
       setAllScores(scores);
-      const mine = scores[wallet?.address];
-      setMyScore(mine || null);
       setPhase("finished");
     },
 
     session_cancelled: ({ scores }) => {
       setAllScores(scores);
-      const mine = scores[wallet?.address];
-      setMyScore(mine || null);
       setPhase("cancelled");
     },
 
     rewards_distributed: ({ scores }) => {
       setAllScores(scores);
-      const mine = scores[wallet?.address];
-      setMyScore(mine || null);
       setPhase("claiming");
     },
 
     session_resumed: ({ status, currentQuestion, scores, players, alreadyAnswered, questionStats }) => {
-      // Restore players and scores
       setPlayers(players);
       setAllScores(scores);
       setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
 
       if (status === "waiting" || status === "active") {
         setPhase("lobby_wait");
-
       } else if (status === "question_open") {
-        // Never resume answering — too complex to sync timer
-        // If already answered just wait, if not treat as missed
         setAnswered(alreadyAnswered);
         setPhase("answer_wait");
-
       } else if (status === "showing_stats") {
         if (questionStats) setQuestionStats(questionStats);
         setPhase("viewing_stats");
-
       } else if (status === "finished") {
-        const mine = scores[wallet?.address];
-        setMyScore(mine || null);
         setPhase("finished");
-
       } else if (status === "claiming") {
-        const mine = scores[wallet?.address];
-        setMyScore(mine || null);
         setPhase("claiming");
       }
     },
@@ -480,7 +486,7 @@ export default function StudentGame({ quiz, wallet, nickname, onPlayAgain, onGam
         )}
 
         {/* CLAIMING */}
-        {phase === "claiming" && myScore && (
+        {phase === "claiming" && (
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, marginBottom: 8, color: COLORS.accent }}>
@@ -495,7 +501,7 @@ export default function StudentGame({ quiz, wallet, nickname, onPlayAgain, onGam
                 fontFamily: "Orbitron, sans-serif", fontSize: 42, fontWeight: 900,
                 color: COLORS.accent,
               }}>
-                {myScore.totalTokens} QTKN
+                {myScore?.totalTokens ?? "—"} QTKN
               </div>
               {balance && (
                 <div style={{ fontSize: 13, color: COLORS.muted, marginTop: 8 }}>

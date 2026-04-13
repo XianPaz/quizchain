@@ -23,6 +23,7 @@ export default function App() {
   const [minterError, setMinterError] = useState("");
   const [savedSession, setSavedSession] = useState(null);
   const [resumeData, setResumeData] = useState(null);
+  const [studentResumeData, setStudentResumeData] = useState(null);
 
   useEffect(() => {
     try {
@@ -42,24 +43,30 @@ export default function App() {
           return;
         }
 
-        if (!result.success) {
+        // For students, allow reconnect as long as the session exists (even if finished).
+        // Only a 404 (session gone) should clear the saved session.
+        if (result.error === "No active quiz found with that code") {
           clearSession();
           return;
         }
 
-        // Students auto-reconnect
+        // Wait for session_resumed before navigating so StudentGame mounts
+        // directly in the correct phase with no lobby_wait flash.
         socket.connect();
         socket.once("connect", () => {
+          socket.once("session_resumed", (data) => {
+            setStudentResumeData(data);
+            setActiveQuiz(saved.quizData);
+            setRole("student");
+            if (saved.nickname) setNickname(saved.nickname);
+            setView("game");
+          });
           socket.emit("join_room", {
             roomCode: saved.roomCode,
             player: { address: saved.walletAddress, name: saved.nickname },
             role: "student",
           });
         });
-        setActiveQuiz(saved.quizData);
-        setRole("student");
-        if (saved.nickname) setNickname(saved.nickname);
-        setView("game");
 
       }).catch(() => {
         clearSession();
@@ -141,6 +148,14 @@ export default function App() {
       });
     });
 
+    saveSession({
+      roomCode: trimmed,
+      quizData: result.session,
+      role: "student",
+      walletAddress: wallet?.address,
+      nickname,
+    });
+
     setNickname(nickname);
     setActiveQuiz(result.session);
     setRole("student");
@@ -195,8 +210,9 @@ export default function App() {
         quiz={activeQuiz}
         wallet={wallet}
         nickname={nickname}
-        onPlayAgain={() => { setView("join"); setActiveQuiz(null); }}
-        onGameEnd={() => { setView("landing"); setActiveQuiz(null); }}
+        resumeData={studentResumeData}
+        onPlayAgain={() => { clearSession(); setStudentResumeData(null); setView("join"); setActiveQuiz(null); }}
+        onGameEnd={() => { clearSession(); setStudentResumeData(null); setView("landing"); setActiveQuiz(null); }}
       />
     );
   };
