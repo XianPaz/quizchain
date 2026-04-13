@@ -30,31 +30,36 @@ export default function App() {
       if (!saved) return;
 
       validateSession(saved.roomCode).then(result => {
+        if (saved.role === "host") {
+          // For hosts, allow reconnect as long as the session exists (even if finished).
+          // Only a 404 (session gone) should clear the saved session.
+          if (result.error === "No active quiz found with that code") {
+            clearSession();
+            return;
+          }
+          setSavedSession(saved);
+          setView("rejoin");
+          return;
+        }
+
         if (!result.success) {
           clearSession();
           return;
         }
 
-        if (saved.role === "student") {
-          // Students auto-reconnect
-          socket.connect();
-          socket.once("connect", () => {
-            socket.emit("join_room", {
-              roomCode: saved.roomCode,
-              player: { address: saved.walletAddress, name: saved.nickname },
-              role: "student",
-            });
+        // Students auto-reconnect
+        socket.connect();
+        socket.once("connect", () => {
+          socket.emit("join_room", {
+            roomCode: saved.roomCode,
+            player: { address: saved.walletAddress, name: saved.nickname },
+            role: "student",
           });
-          setActiveQuiz(saved.quizData);
-          setRole("student");
-          if (saved.nickname) setNickname(saved.nickname);
-          setView("game");
-
-        } else if (saved.role === "host") {
-          // Professors see the rejoin screen first
-          setSavedSession(saved);
-          setView("rejoin");
-        }
+        });
+        setActiveQuiz(saved.quizData);
+        setRole("student");
+        if (saved.nickname) setNickname(saved.nickname);
+        setView("game");
 
       }).catch(() => {
         clearSession();
