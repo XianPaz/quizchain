@@ -1,5 +1,6 @@
 import { formatAddress } from "../utils/helpers";
 import { COLORS } from "../styles/colors";
+import { copy } from "../copy/es-AR";
 
 export default function WalletBar({ wallet, onConnect, onDisconnect, error, connecting }) {
   return (
@@ -19,14 +20,14 @@ export default function WalletBar({ wallet, onConnect, onDisconnect, error, conn
             <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: COLORS.text }}>
               {formatAddress(wallet.address)}
             </span>
-            <span style={{ fontSize: 11, color: COLORS.muted }}>Sepolia</span>
+            <span style={{ fontSize: 11, color: COLORS.muted }}>{copy.wallet.network}</span>
             <button onClick={onDisconnect} style={{
               background: "transparent", border: `1px solid ${COLORS.border}`,
               borderRadius: 6, color: COLORS.muted, cursor: "pointer",
               fontSize: 11, padding: "4px 10px",
               fontFamily: "Space Grotesk, sans-serif",
             }}>
-              Disconnect
+              {copy.wallet.disconnect}
             </button>
           </>
         ) : (
@@ -38,7 +39,7 @@ export default function WalletBar({ wallet, onConnect, onDisconnect, error, conn
             fontSize: 12, padding: "6px 14px", fontWeight: 700,
             fontFamily: "Space Grotesk, sans-serif",
           }}>
-            {connecting ? "Connecting..." : "🦊 Connect MetaMask"}
+            {connecting ? copy.wallet.connecting : `🦊 ${copy.wallet.connect}`}
           </button>
         )}
       </div>

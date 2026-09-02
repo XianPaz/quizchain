@@ -1,20 +1,22 @@
+import { copy } from "../copy/es-AR";
+
 export function parseQuizCSV(text) {
   const lines = text.trim().split("\n").map(l => l.trim()).filter(Boolean);
 
   if (lines.length < 4) {
-    throw new Error("File too short. Make sure it follows the template format.");
+    throw new Error(copy.csv.tooShort);
   }
 
   const firstRow = parseCSVLine(lines[0]);
   if (firstRow[0].toLowerCase() !== "quiz_name") {
-    throw new Error("Cell A1 must be 'quiz_name'. Check the template.");
+    throw new Error(copy.csv.missingQuizNameKey);
   }
   const quizName = firstRow[1]?.trim();
-  if (!quizName) throw new Error("Quiz name is missing in cell B1.");
+  if (!quizName) throw new Error(copy.csv.missingQuizName);
 
   const questionLines = lines.slice(3);
   if (questionLines.length === 0) {
-    throw new Error("No questions found. Add at least one question from row 4.");
+    throw new Error(copy.csv.noQuestions);
   }
 
   const questions = questionLines.map((line, i) => {
@@ -22,7 +24,7 @@ export function parseQuizCSV(text) {
     const rowNum = i + 4;
 
     const question = cols[0]?.trim();
-    if (!question) throw new Error(`Row ${rowNum}: question text is missing.`);
+    if (!question) throw new Error(copy.csv.missingQuestion(rowNum));
 
     // Collect options from columns 1 onwards until correct and time_limit
     // Format: question, opt_a, opt_b, [opt_c], [opt_d], [opt_e], [opt_f], correct, time_limit
@@ -37,16 +39,16 @@ export function parseQuizCSV(text) {
     }
 
     if (correctIndex === -1) {
-      throw new Error(`Row ${rowNum}: could not find correct answer column (must be A–F).`);
+      throw new Error(copy.csv.missingCorrect(rowNum));
     }
 
     const options = cols.slice(1, correctIndex).map(o => o?.trim()).filter(Boolean);
 
     if (options.length < 2) {
-      throw new Error(`Row ${rowNum}: at least 2 options are required.`);
+      throw new Error(copy.csv.minOptions(rowNum));
     }
     if (options.length > 6) {
-      throw new Error(`Row ${rowNum}: maximum 6 options allowed.`);
+      throw new Error(copy.csv.maxOptions(rowNum));
     }
 
     const correctLetter = cols[correctIndex]?.trim().toUpperCase();
@@ -54,12 +56,12 @@ export function parseQuizCSV(text) {
     const correctAnswerIndex = correctMap[correctLetter];
 
     if (correctAnswerIndex >= options.length) {
-      throw new Error(`Row ${rowNum}: correct answer "${correctLetter}" refers to an option that doesn't exist.`);
+      throw new Error(copy.csv.correctMissingOption(rowNum, correctLetter));
     }
 
     const timeLimit = parseInt(cols[correctIndex + 1]);
     if (isNaN(timeLimit) || timeLimit < 5 || timeLimit > 120) {
-      throw new Error(`Row ${rowNum}: time_limit must be a number between 5 and 120.`);
+      throw new Error(copy.csv.badTime(rowNum));
     }
 
     return {
