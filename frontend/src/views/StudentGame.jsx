@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuizSocket } from "../hooks/useQuizSocket";
 import { COLORS } from "../styles/colors";
-import { formatAddress, getRankEmoji } from "../utils/helpers";
+import { formatAddress, getRankEmoji, placeLabel, pointsToTokens, normalizeAddress, sameAddress } from "../utils/helpers";
 import { getTokenBalance } from "../utils/blockchain";
 import { CONTRACTS } from "../config";
+import HighlightsBanner from "../components/HighlightsBanner";
 
 function Leaderboard({ scores, players, myAddress, quiz }) {
   const sorted = Object.entries(scores)
     .map(([address, s]) => ({ address, ...s }))
-    .sort((a, b) => b.correct - a.correct || 0);
+    .sort((a, b) => (b.totalPoints ?? b.totalTokens ?? 0) - (a.totalPoints ?? a.totalTokens ?? 0));
 
   const nicknameMap = {};
   players.forEach(p => { nicknameMap[p.address] = p.name; });
@@ -20,7 +21,7 @@ function Leaderboard({ scores, players, myAddress, quiz }) {
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {sorted.map((p, i) => {
-          const isMe = p.address === myAddress;
+          const isMe = sameAddress(p.address, myAddress);
           return (
             <div key={p.address} style={{
               display: "flex", alignItems: "center", gap: 12,
@@ -38,13 +39,14 @@ function Leaderboard({ scores, players, myAddress, quiz }) {
               </span>
               <span style={{ color: COLORS.muted, fontSize: 12 }}>
                 {p.correct}{quiz ? `/${quiz.questions.length}` : ""} correct
+                {p.streak >= 3 ? ` · 🔥${p.streak}` : ""}
               </span>
               <span style={{
                 background: `${COLORS.accent}22`, border: `1px solid ${COLORS.accent}44`,
                 borderRadius: 6, padding: "3px 8px",
                 fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: COLORS.accent,
               }}>
-                ⬡ {p.totalTokens ?? "—"}
+                {p.totalPoints ?? p.totalTokens ?? "—"}
               </span>
             </div>
           );
@@ -63,25 +65,74 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
   const [answered, setAnswered] = useState(false);
   const [questionStats, setQuestionStats] = useState(null);
   const [allScores, setAllScores] = useState({});
-  const myScore = allScores[wallet?.address] || null;
+  const myAddress = normalizeAddress(wallet?.address);
+  const myScore = (myAddress && allScores[myAddress]) || null;
   const [players, setPlayers] = useState([]);
   const [balance, setBalance] = useState(null);
+  const [highlights, setHighlights] = useState(null);
   const timerRef = useRef(null);
   const questionOpenedAt = useRef(null);
-  
+  const emitRef = useRef(null);
+  const pendingRef = useRef(false);
+
+  const clearTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const secondsLeft = (deadline, fallback) => {
+    if (deadline != null) return Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    return fallback ?? 0;
+  };
+
+  const armDeadlineTimer = (deadline, timeLimit) => {
+    clearTimer();
+    const limit = timeLimit || 20;
+    const left = secondsLeft(deadline, limit);
+    setTimeRemaining(left);
+    questionOpenedAt.current = deadline != null ? deadline - limit * 1000 : Date.now();
+    if (left <= 0) {
+      setPhase((prev) => (prev === "answering" ? "answer_wait" : prev));
+      return;
+    }
+    timerRef.current = setInterval(() => {
+      const next = secondsLeft(deadline, 0);
+      setTimeRemaining(next);
+      if (next <= 0) {
+        clearTimer();
+        setPhase((prev) => (prev === "answering" ? "answer_wait" : prev));
+      }
+    }, 250);
+  };
+
   useEffect(() => {
     if (!resumeData) return;
-    const { status, currentQuestion, scores, players, alreadyAnswered, questionStats } = resumeData;
+    const {
+      status, currentQuestion, scores, players, alreadyAnswered,
+      questionStats, remainingTime, deadline, highlights,
+    } = resumeData;
 
     setPlayers(players || []);
     setAllScores(scores || {});
     setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
+    if (highlights) setHighlights(highlights);
 
     if (status === "waiting" || status === "active") {
       setPhase("lobby_wait");
     } else if (status === "question_open") {
       setAnswered(alreadyAnswered || false);
-      setPhase("answer_wait");
+      if (alreadyAnswered) {
+        setPhase("answer_wait");
+      } else {
+        setPhase("answering");
+        const q = quiz.questions[currentQuestion === -1 ? 0 : currentQuestion];
+        const fromRemaining = remainingTime != null
+          ? Date.now() + remainingTime * 1000
+          : null;
+        armDeadlineTimer(deadline ?? fromRemaining, q?.timeLimit);
+      }
     } else if (status === "showing_stats") {
       if (questionStats) setQuestionStats(questionStats);
       setPhase("viewing_stats");
@@ -91,6 +142,8 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
       setPhase("claiming");
     }
   }, [resumeData]);
+
+  useEffect(() => () => clearTimer(), []);
 
   useEffect(() => {
     if (phase === "claiming" && wallet?.address) {
@@ -107,37 +160,44 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
       setPhase("lobby_wait"); // wait for first question_opened
     },
 
-    question_opened: ({ questionIndex }) => {
+    question_opened: ({ questionIndex, deadline, timeLimit }) => {
+      clearTimer();
+      pendingRef.current = false;
       setCurrentQ(questionIndex);
       setSelectedAnswer(null);
       setAnswered(false);
       setQuestionStats(null);
+      setHighlights(null);
       setPhase("answering");
-      questionOpenedAt.current = Date.now();
-
-      const limit = quiz.questions[questionIndex].timeLimit;
-      setTimeRemaining(limit);
-
-      timerRef.current = setInterval(() => {
-        setTimeRemaining(prev => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current);
-            handleTimeout(questionIndex);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      const limit = timeLimit || quiz.questions[questionIndex]?.timeLimit;
+      armDeadlineTimer(deadline, limit);
     },
 
     answer_ack: () => {
-      clearInterval(timerRef.current);
+      clearTimer();
+      pendingRef.current = false;
+      setAnswered(true);
       setPhase("answer_wait");
     },
 
+    answer_rejected: ({ reason }) => {
+      pendingRef.current = false;
+      if (reason === "after_deadline" || reason === "question_not_open") {
+        clearTimer();
+        setSelectedAnswer(null);
+        setAnswered(true);
+        setPhase("answer_wait");
+        return;
+      }
+      setSelectedAnswer(null);
+      setAnswered(false);
+    },
+
     question_stats: (stats) => {
+      clearTimer();
       setQuestionStats(stats);
       if (stats.scores) setAllScores(stats.scores);
+      if (stats.highlights) setHighlights(stats.highlights);
       setPhase("viewing_stats");
     },
 
@@ -156,16 +216,29 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
       setPhase("claiming");
     },
 
-    session_resumed: ({ status, currentQuestion, scores, players, alreadyAnswered, questionStats }) => {
+    session_resumed: ({
+      status, currentQuestion, scores, players, alreadyAnswered,
+      questionStats, highlights, remainingTime, deadline,
+    }) => {
       setPlayers(players);
       setAllScores(scores);
       setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
+      if (highlights) setHighlights(highlights);
 
       if (status === "waiting" || status === "active") {
         setPhase("lobby_wait");
       } else if (status === "question_open") {
         setAnswered(alreadyAnswered);
-        setPhase("answer_wait");
+        if (alreadyAnswered) {
+          setPhase("answer_wait");
+        } else {
+          setPhase("answering");
+          const q = quiz.questions[currentQuestion === -1 ? 0 : currentQuestion];
+          const fromRemaining = remainingTime != null
+            ? Date.now() + remainingTime * 1000
+            : null;
+          armDeadlineTimer(deadline ?? fromRemaining, q?.timeLimit);
+        }
       } else if (status === "showing_stats") {
         if (questionStats) setQuestionStats(questionStats);
         setPhase("viewing_stats");
@@ -178,39 +251,23 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
 
   });
 
+  emitRef.current = emit;
+
   const handleAnswer = (answerIndex) => {
-    if (answered || phase !== "answering") return;
-    clearInterval(timerRef.current);
+    if (answered || pendingRef.current || phase !== "answering") return;
+    pendingRef.current = true;
     setSelectedAnswer(answerIndex);
-    setAnswered(true);
-
-    const elapsed = (Date.now() - questionOpenedAt.current) / 1000;
-    const limit = question.timeLimit;
-    const speedScore = Math.round((Math.max(0, limit - elapsed) / limit) * 100);
-
     emit("student_answer", {
-      address: wallet?.address,
       questionIndex: currentQ,
       answerIndex,
-      speedScore,
     });
-  };
-
-  const handleTimeout = (questionIndex) => {
-    if (answered) return;
-    setAnswered(true);
-    emit("student_timeout", {
-      address: wallet?.address,
-      questionIndex: questionIndex ?? currentQ,
-    });
-    setPhase("answer_wait");
   };
 
   const sortedScores = Object.entries(allScores)
     .map(([address, s]) => ({ address, ...s }))
-    .sort((a, b) => b.totalTokens - a.totalTokens);
+    .sort((a, b) => (b.totalPoints ?? b.totalTokens ?? 0) - (a.totalPoints ?? a.totalTokens ?? 0));
 
-  const myRank = sortedScores.findIndex(s => s.address === wallet?.address) + 1;
+  const myRank = sortedScores.findIndex((s) => sameAddress(s.address, myAddress)) + 1;
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.bg, fontFamily: "Space Grotesk, sans-serif" }}>
@@ -353,21 +410,39 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
             {quiz.questions[currentQ].question}
             </div>
 
-            {/* Correct/wrong feedback */}
-            {selectedAnswer !== null && (
+            {(() => {
+              const gotIt = (myScore?.lastPoints ?? 0) > 0;
+              const label = gotIt ? "⚡ Correct!" : selectedAnswer === null ? "⏱️ Time's up" : "✗ Wrong answer";
+              return (
               <div style={{
-                background: selectedAnswer === questionStats.correctIndex
-                  ? `${COLORS.accent}22` : `${COLORS.red}22`,
-                border: `1px solid ${selectedAnswer === questionStats.correctIndex
-                  ? COLORS.accent + "55" : COLORS.red + "55"}`,
+                background: gotIt ? `${COLORS.accent}22` : `${COLORS.red}22`,
+                border: `1px solid ${gotIt ? COLORS.accent + "55" : COLORS.red + "55"}`,
                 borderRadius: 10, padding: 16, textAlign: "center",
-                marginBottom: 20, fontSize: 16, fontWeight: 700,
-                color: selectedAnswer === questionStats.correctIndex ? COLORS.accent : COLORS.red
+                marginBottom: 20,
+                color: gotIt ? COLORS.accent : COLORS.red
               }}>
-                {selectedAnswer === questionStats.correctIndex
-                  ? "⚡ Correct!" : "✗ Wrong answer"}
+                <div style={{ fontSize: 16, fontWeight: 700 }}>{label}</div>
+                {gotIt && myScore?.lastPlace && (
+                  <div style={{ fontSize: 13, marginTop: 4, opacity: 0.85 }}>
+                    {placeLabel(myScore.lastPlace)} to answer correctly
+                  </div>
+                )}
+                <div style={{
+                  fontFamily: "Orbitron, sans-serif", fontSize: 32, fontWeight: 900, marginTop: 6,
+                }}>
+                  {gotIt ? `+${myScore.lastPoints}` : "+0"}
+                </div>
+                <div style={{ fontSize: 13, marginTop: 4, opacity: 0.85 }}>
+                  ⬡ {gotIt ? pointsToTokens(myScore.lastPoints) : 0} QTKN
+                </div>
+                {gotIt && myScore?.streak >= 2 && (
+                  <div style={{ fontSize: 13, marginTop: 4 }}>🔥 {myScore.streak} streak</div>
+                )}
               </div>
-            )}
+              );
+            })()}
+
+            <HighlightsBanner highlights={highlights} myAddress={myAddress} />
 
             {/* Distribution */}
             <div style={{
@@ -403,7 +478,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
             </div>
 
             {Object.keys(allScores).length > 0 && (
-              <Leaderboard scores={allScores} players={players} myAddress={wallet?.address} quiz={quiz} />
+              <Leaderboard scores={allScores} players={players} myAddress={myAddress} quiz={quiz} />
             )}
 
             <p style={{ textAlign: "center", color: COLORS.muted, fontSize: 13 }}>
@@ -460,12 +535,18 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 borderRadius: 12, padding: 24, marginBottom: 24,
               }}>
                 <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 12 }}>YOUR SCORE</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
                   <div>
                     <div style={{ fontSize: 28, fontWeight: 900, color: COLORS.text }}>
                       {myScore.correct}/{quiz.questions.length}
                     </div>
                     <div style={{ fontSize: 12, color: COLORS.muted }}>Correct</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: COLORS.accent }}>
+                      {myScore.totalPoints ?? 0}
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.muted }}>Points</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 28, fontWeight: 900 }}>{getRankEmoji(myRank)}</div>
@@ -476,7 +557,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
             )}
 
             {Object.keys(allScores).length > 0 && (
-              <Leaderboard scores={allScores} players={players} myAddress={wallet?.address} quiz={quiz} />
+              <Leaderboard scores={allScores} players={players} myAddress={myAddress} quiz={quiz} />
             )}
 
             <p style={{ color: COLORS.muted, fontSize: 14 }}>

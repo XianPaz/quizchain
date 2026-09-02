@@ -1,6 +1,7 @@
 import { COLORS } from "../styles/colors";
 import { styles } from "../styles/styles";
 import { formatAddress } from "../utils/helpers";
+import { copy } from "../copy/es-AR";
 
 export default function RejoinView({ savedSession, wallet, onRejoin, onLeave }) {
   return (
@@ -20,10 +21,10 @@ export default function RejoinView({ savedSession, wallet, onRejoin, onLeave }) 
           fontFamily: "Orbitron, sans-serif", fontSize: 22,
           color: COLORS.text, marginBottom: 8,
         }}>
-          Active Session Found
+          {copy.rejoin.title}
         </h2>
         <p style={{ color: COLORS.muted, fontSize: 14, marginBottom: 32 }}>
-          You were hosting a quiz when you left. Do you want to rejoin?
+          {copy.rejoin.body}
         </p>
 
         {/* Session info */}
@@ -34,7 +35,7 @@ export default function RejoinView({ savedSession, wallet, onRejoin, onLeave }) 
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div>
               <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 4 }}>
-                QUIZ NAME
+                {copy.rejoin.quizName}
               </div>
               <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.text }}>
                 {savedSession.quizData?.name}
@@ -42,18 +43,18 @@ export default function RejoinView({ savedSession, wallet, onRejoin, onLeave }) 
             </div>
             <div>
               <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 4 }}>
-                ROOM CODE
+                {copy.rejoin.roomCode}
               </div>
               <div style={{
-                fontFamily: "Orbitron, sans-serif", fontSize: 28,
-                fontWeight: 900, color: COLORS.accent, letterSpacing: 6,
+                fontFamily: "Orbitron, sans-serif", fontSize: 22,
+                fontWeight: 900, color: COLORS.accent, letterSpacing: 1,
               }}>
                 {savedSession.roomCode}
               </div>
             </div>
             <div>
               <div style={{ fontSize: 11, color: COLORS.muted, marginBottom: 4 }}>
-                YOUR WALLET
+                {copy.rejoin.wallet}
               </div>
               <div style={{
                 fontFamily: "JetBrains Mono, monospace",
@@ -75,7 +76,7 @@ export default function RejoinView({ savedSession, wallet, onRejoin, onLeave }) 
               fontSize: 15, fontWeight: 700, cursor: "pointer",
               fontFamily: "Space Grotesk, sans-serif", width: "100%",
             }}>
-            ▶ Rejoin Session
+            ▶ {copy.rejoin.rejoin}
           </button>
           <button
             onClick={onLeave}
@@ -86,7 +87,7 @@ export default function RejoinView({ savedSession, wallet, onRejoin, onLeave }) 
               fontSize: 14, cursor: "pointer",
               fontFamily: "Space Grotesk, sans-serif", width: "100%",
             }}>
-            ✕ Leave Session
+            ✕ {copy.rejoin.leave}
           </button>
         </div>
       </div>
