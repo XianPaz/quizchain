@@ -1,12 +1,8 @@
+import { normalizeRoomCode } from "./game/contract";
+
 const BASE = import.meta.env.VITE_API_URL;
 
-export function normalizeRoomCode(input) {
-  return String(input ?? "")
-    .trim()
-    .replace(/-/g, " ")
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-}
+export { normalizeRoomCode };
 
 // Canonical HTTP path: /sessions/cactus-maple
 function roomCodePath(roomCode) {
