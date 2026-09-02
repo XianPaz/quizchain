@@ -1,61 +1,13 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuizSocket } from "../hooks/useQuizSocket";
 import { COLORS } from "../styles/colors";
-import { formatAddress, getRankEmoji, placeLabel, pointsToTokens, normalizeAddress, sameAddress } from "../utils/helpers";
+import { formatAddress, getRankEmoji, placeLabel, pointsToTokens, normalizeAddress } from "../utils/helpers";
 import { getTokenBalance } from "../utils/blockchain";
 import { CONTRACTS } from "../config";
 import { copy } from "../copy/es-AR.js";
 import HighlightsBanner from "../components/HighlightsBanner";
-
-function Leaderboard({ scores, players, myAddress, quiz }) {
-  const sorted = Object.entries(scores)
-    .map(([address, s]) => ({ address, ...s }))
-    .sort((a, b) => (b.totalPoints ?? b.totalTokens ?? 0) - (a.totalPoints ?? a.totalTokens ?? 0));
-
-  const nicknameMap = {};
-  players.forEach(p => { nicknameMap[p.address] = p.name; });
-
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.muted, marginBottom: 10 }}>
-        {copy.game.leaderboard}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {sorted.map((p, i) => {
-          const isMe = sameAddress(p.address, myAddress);
-          return (
-            <div key={p.address} style={{
-              display: "flex", alignItems: "center", gap: 12,
-              background: isMe ? `${COLORS.accent}11` : COLORS.card,
-              border: `1px solid ${isMe ? COLORS.accent + "44" : COLORS.border}`,
-              borderRadius: 10, padding: "10px 14px",
-            }}>
-              <span style={{ fontSize: 16, width: 28 }}>{getRankEmoji(i + 1)}</span>
-              <span style={{
-                flex: 1, fontSize: 14, fontWeight: isMe ? 700 : 400,
-                color: isMe ? COLORS.accent : COLORS.text,
-              }}>
-                {nicknameMap[p.address] || formatAddress(p.address)}
-                {isMe && <span style={{ color: COLORS.muted, fontSize: 11 }}> ({copy.game.you})</span>}
-              </span>
-              <span style={{ color: COLORS.muted, fontSize: 12 }}>
-                {quiz ? copy.game.correctOf(p.correct, quiz.questions.length) : `${p.correct}`}
-                {p.streak >= 3 ? ` · 🔥${p.streak}` : ""}
-              </span>
-              <span style={{
-                background: `${COLORS.accent}22`, border: `1px solid ${COLORS.accent}44`,
-                borderRadius: 6, padding: "3px 8px",
-                fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: COLORS.accent,
-              }}>
-                {p.totalPoints ?? p.totalTokens ?? "—"}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
+import Leaderboard from "../components/Leaderboard";
+import { rankedScores } from "../utils/ranking";
 
 export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlayAgain, onGameEnd }) {
   const [phase, setPhase] = useState("lobby_wait");
@@ -264,11 +216,10 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
     });
   };
 
-  const sortedScores = Object.entries(allScores)
-    .map(([address, s]) => ({ address, ...s }))
-    .sort((a, b) => (b.totalPoints ?? b.totalTokens ?? 0) - (a.totalPoints ?? a.totalTokens ?? 0));
-
-  const myRank = sortedScores.findIndex((s) => sameAddress(s.address, myAddress)) + 1;
+  // El puesto lo calcula el servidor, que empata y paga por ese mismo puesto.
+  const myRank = myScore?.rank ?? (rankedScores(allScores).findIndex(
+    (s) => s.address === myAddress
+  ) + 1);
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.bg, fontFamily: "Space Grotesk, sans-serif" }}>
@@ -481,7 +432,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
             </div>
 
             {Object.keys(allScores).length > 0 && (
-              <Leaderboard scores={allScores} players={players} myAddress={myAddress} quiz={quiz} />
+              <Leaderboard scores={allScores} players={players} quiz={quiz} myAddress={myAddress} />
             )}
 
             <p style={{ textAlign: "center", color: COLORS.muted, fontSize: 13 }}>
@@ -560,7 +511,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
             )}
 
             {Object.keys(allScores).length > 0 && (
-              <Leaderboard scores={allScores} players={players} myAddress={myAddress} quiz={quiz} />
+              <Leaderboard scores={allScores} players={players} quiz={quiz} myAddress={myAddress} />
             )}
 
             <p style={{ color: COLORS.muted, fontSize: 14 }}>

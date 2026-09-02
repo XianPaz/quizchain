@@ -5,49 +5,8 @@ import { getRankEmoji, formatAddress } from "../utils/helpers";
 import { distributeRewards } from "../utils/blockchain";
 import { copy } from "../copy/es-AR.js";
 import HighlightsBanner from "../components/HighlightsBanner";
-
-function Leaderboard({ scores, players, quiz }) {
-  const sorted = Object.entries(scores)
-    .map(([address, s]) => ({ address, ...s }))
-    .sort((a, b) => (b.totalPoints ?? b.totalTokens ?? 0) - (a.totalPoints ?? a.totalTokens ?? 0));
-
-  // Build address → nickname map from players list
-  const nicknameMap = {};
-  players.forEach(p => { nicknameMap[p.address] = p.name; });
-
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.muted, marginBottom: 10 }}>
-        {copy.game.leaderboard}
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {sorted.map((p, i) => (
-          <div key={p.address} style={{
-            display: "flex", alignItems: "center", gap: 12,
-            background: COLORS.card, border: `1px solid ${COLORS.border}`,
-            borderRadius: 10, padding: "10px 14px",
-          }}>
-            <span style={{ fontSize: 16, width: 28 }}>{getRankEmoji(i + 1)}</span>
-            <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: COLORS.text }}>
-              {nicknameMap[p.address] || formatAddress(p.address)}
-            </span>
-            <span style={{ color: COLORS.muted, fontSize: 12 }}>
-              {quiz ? copy.host.correctOf(p.correct, quiz.questions.length) : `${p.correct}`}
-              {p.streak >= 3 ? ` · 🔥${p.streak}` : ""}
-            </span>
-            <span style={{
-              background: `${COLORS.accent}22`, border: `1px solid ${COLORS.accent}44`,
-              borderRadius: 6, padding: "3px 8px",
-              fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: COLORS.accent,
-            }}>
-              {p.totalPoints ?? p.totalTokens ?? "—"}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-};
+import Leaderboard from "../components/Leaderboard";
+import { rankedScores } from "../utils/ranking";
 
 export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
   const [phase, setPhase] = useState("lobby");
@@ -197,9 +156,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
   };
 
   const question = quiz.questions[currentQ];
-  const sortedScores = Object.entries(scores)
-    .map(([address, s]) => ({ address, ...s }))
-    .sort((a, b) => (b.totalPoints ?? b.totalTokens ?? 0) - (a.totalPoints ?? a.totalTokens ?? 0));
+  const sortedScores = rankedScores(scores);
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.bg, fontFamily: "Space Grotesk, sans-serif" }}>
@@ -492,7 +449,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                     background: COLORS.card, border: `1px solid ${COLORS.border}`,
                     borderRadius: 10, padding: "12px 16px",
                   }}>
-                    <span style={{ fontSize: 20, width: 32 }}>{getRankEmoji(i + 1)}</span>
+                    <span style={{ fontSize: 20, width: 32 }}>{getRankEmoji(p.rank ?? i + 1)}</span>
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 700, fontSize: 14, color: COLORS.text }}>
                         {nickname || formatAddress(p.address)}
