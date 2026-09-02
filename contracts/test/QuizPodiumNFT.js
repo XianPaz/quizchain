@@ -284,5 +284,59 @@ describe("QuizPodiumNFT", function () {
       expect(traits.wallet.toLowerCase()).to.equal(student.address.toLowerCase());
       expect(traits["session ID"]).to.equal(SESSION_A);
     });
+
+    it("escapes XML in the SVG so a class name cannot break the image", async function () {
+      const { nft, professor, student, other } = await loadFixture(deployFixture);
+
+      await nft.connect(professor).mintPodium(
+        student.address,
+        podiumInput({ className: "Fisica & Quimica", date: "2026-09-01" })
+      );
+      const plain = decodeTokenURI(await nft.tokenURI(1));
+      const plainSvg = Buffer.from(plain.image.split(",")[1], "base64").toString("utf8");
+      expect(plainSvg).to.include("Fisica &amp; Quimica");
+      expect(plainSvg).to.not.include("Fisica & Quimica");
+      // The JSON keeps the real text; only the image markup is escaped.
+      expect(plain.clase).to.equal("Fisica & Quimica");
+
+      const hostile = "</text><script>alert(1)</script><text x='0'>";
+      await nft.connect(professor).mintPodium(
+        other.address,
+        podiumInput({ sessionId: SESSION_B, className: hostile, date: '2026-"09"-01' })
+      );
+      const meta = decodeTokenURI(await nft.tokenURI(2));
+      const svg = Buffer.from(meta.image.split(",")[1], "base64").toString("utf8");
+      expect(svg).to.not.include("<script>");
+      expect(svg).to.not.include("</text><script>");
+      expect(svg).to.include("&lt;script&gt;");
+      expect(svg).to.include("&apos;0&apos;");
+      expect(svg).to.include("&quot;09&quot;");
+      // Every angle bracket left in the image is real SVG markup, not user text.
+      expect((svg.match(/<text /g) || []).length).to.equal(3);
+      expect(meta.clase).to.equal(hostile);
+    });
+
+    it("refuses control bytes that no JSON or XML reader can carry", async function () {
+      const { nft, professor, student, other } = await loadFixture(deployFixture);
+
+      // OpenZeppelin's escapeJSON does not escape these, so the metadata JSON would
+      // be unparseable for good on a token that can never be re-minted.
+      for (const bad of ["6to\u0000 A", "6to\u000b A", "6to\u001f A"]) {
+        await expect(
+          nft.connect(professor).mintPodium(student.address, podiumInput({ className: bad }))
+        ).to.be.revertedWith("Unprintable character");
+      }
+      await expect(
+        nft.connect(professor).mintPodium(student.address, podiumInput({ date: "2026\u0007" }))
+      ).to.be.revertedWith("Unprintable character");
+
+      // Tab and newline are legal in both formats and still mint.
+      await nft.connect(professor).mintPodium(
+        other.address,
+        podiumInput({ className: "6to\tA\nB" })
+      );
+      const meta = decodeTokenURI(await nft.tokenURI(1));
+      expect(meta.clase).to.equal("6to\tA\nB");
+    });
   });
 });
