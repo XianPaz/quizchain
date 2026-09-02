@@ -132,6 +132,8 @@ contract QuizPodiumNFT is ERC721, Ownable {
         require(bytes(input.sessionId).length != 0, "Empty sessionId");
         require(input.rank >= 1 && input.rank <= 3, "Invalid rank");
 
+        // The metadata is written on chain and the token can never be re-minted, so
+        // text that no JSON or XML reader can carry is refused here, not mangled later.
         _requireRenderable(input.sessionId);
         _requireRenderable(input.quizName);
         _requireRenderable(input.className);
@@ -160,6 +162,8 @@ contract QuizPodiumNFT is ERC721, Ownable {
         emit PodiumMinted(msg.sender, to, tokenId, input.sessionId, input.rank);
     }
 
+    /// @dev Refuse C0 control bytes. Tab, newline and carriage return are legal in
+    /// both JSON and XML and are allowed; the rest break one or the other.
     function _requireRenderable(string memory input) internal pure {
         bytes memory data = bytes(input);
         for (uint256 i = 0; i < data.length; i++) {
@@ -263,51 +267,30 @@ contract QuizPodiumNFT is ERC721, Ownable {
         );
     }
 
-    function _rankDigit(uint8 rank) internal pure returns (string memory) {
-        if (rank == 1) return "1";
-        if (rank == 2) return "2";
-        return "3";
-    }
-
-    function _metalColor(uint8 rank) internal pure returns (string memory) {
-        if (rank == 1) return "#C9A227";
-        if (rank == 2) return "#A8B0B8";
-        return "#B0723E";
-    }
-
     function _imageURI(uint256 tokenId) internal view returns (string memory) {
         Podium storage p = _podiums[tokenId];
-        string memory metal = _metalColor(p.rank);
         string memory svg = string.concat(
-            "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600' viewBox='0 0 600 600'>",
-            "<rect width='600' height='600' fill='#0E0E0D'/>",
-            "<circle cx='300' cy='248' r='118' fill='none' stroke='",
-            metal,
-            "' stroke-width='3'/>",
-            "<circle cx='300' cy='248' r='108' fill='none' stroke='",
-            metal,
-            "' stroke-width='1'/>",
-            "<text x='300' y='281' text-anchor='middle' font-family='sans-serif' font-size='92' font-weight='700' fill='",
-            metal,
-            "'>",
-            _rankDigit(p.rank),
-            "</text>",
-            "<text x='300' y='418' text-anchor='middle' font-family='serif' font-size='28' fill='#ECE8E0'>",
-            _escapeXML(p.nickname),
-            "</text>",
-            "<text x='300' y='452' text-anchor='middle' font-family='sans-serif' font-size='14' fill='#A09A8E'>",
+            "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'>",
+            "<rect width='100%' height='100%' fill='",
+            p.rank == 1 ? "#D4AF37" : (p.rank == 2 ? "#C0C0C0" : "#CD7F32"),
+            "'/>",
+            "<text x='50%' y='38%' text-anchor='middle' font-size='48'>",
+            medalName(p.rank),
+            "</text><text x='50%' y='54%' text-anchor='middle' font-size='24'>",
             _escapeXML(p.className),
-            "  ·  ",
+            "</text><text x='50%' y='64%' text-anchor='middle' font-size='24'>",
             _escapeXML(p.date),
-            "</text>",
-            "<text x='300' y='552' text-anchor='middle' font-family='sans-serif' font-size='11' letter-spacing='6' fill='#A09A8E'>QUIZCHAIN</text>",
-            "</svg>"
+            "</text></svg>"
         );
         return string.concat("data:image/svg+xml;base64,", Base64.encode(bytes(svg)));
     }
 
+    /// @dev The metadata is written on chain and the token is soulbound, so a name
+    /// that carries `&` or `<` would break the image for good. The JSON fields go
+    /// through Strings.escapeJSON; the SVG text needs the XML entities.
     function _escapeXML(string memory input) internal pure returns (string memory) {
         bytes memory data = bytes(input);
+        // Longest replacement is "&quot;" / "&apos;", 6 bytes for 1.
         bytes memory buffer = new bytes(data.length * 6);
         uint256 n = 0;
 
@@ -324,6 +307,8 @@ contract QuizPodiumNFT is ERC721, Ownable {
             } else if (c == "'") {
                 n = _writeChunk(buffer, n, "&apos;");
             } else if (c < 0x20 && c != 0x09 && c != 0x0A && c != 0x0D) {
+                // C0 control bytes are illegal in XML 1.0 and would leave the image
+                // unreadable in every wallet, for good. Drop them.
                 continue;
             } else {
                 buffer[n] = c;
