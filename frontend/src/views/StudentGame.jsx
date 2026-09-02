@@ -4,6 +4,7 @@ import { COLORS } from "../styles/colors";
 import { formatAddress, getRankEmoji, placeLabel, pointsToTokens, normalizeAddress, sameAddress } from "../utils/helpers";
 import { getTokenBalance } from "../utils/blockchain";
 import { CONTRACTS } from "../config";
+import { copy } from "../copy/es-AR.js";
 import HighlightsBanner from "../components/HighlightsBanner";
 
 function Leaderboard({ scores, players, myAddress, quiz }) {
@@ -17,7 +18,7 @@ function Leaderboard({ scores, players, myAddress, quiz }) {
   return (
     <div style={{ marginTop: 20 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.muted, marginBottom: 10 }}>
-        LEADERBOARD
+        {copy.game.leaderboard}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {sorted.map((p, i) => {
@@ -35,10 +36,10 @@ function Leaderboard({ scores, players, myAddress, quiz }) {
                 color: isMe ? COLORS.accent : COLORS.text,
               }}>
                 {nicknameMap[p.address] || formatAddress(p.address)}
-                {isMe && <span style={{ color: COLORS.muted, fontSize: 11 }}> (you)</span>}
+                {isMe && <span style={{ color: COLORS.muted, fontSize: 11 }}> ({copy.game.you})</span>}
               </span>
               <span style={{ color: COLORS.muted, fontSize: 12 }}>
-                {p.correct}{quiz ? `/${quiz.questions.length}` : ""} correct
+                {quiz ? copy.game.correctOf(p.correct, quiz.questions.length) : `${p.correct}`}
                 {p.streak >= 3 ? ` · 🔥${p.streak}` : ""}
               </span>
               <span style={{
@@ -295,7 +296,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, marginBottom: 8, color: COLORS.text }}>
               {quiz.name}
             </h2>
-            <p style={{ color: COLORS.muted }}>Waiting for the host to start the quiz...</p>
+            <p style={{ color: COLORS.muted }}>{copy.game.waitingStart}</p>
             <div style={{
               display: "inline-flex", alignItems: "center", gap: 8,
               background: `${COLORS.accent}11`, border: `1px solid ${COLORS.accent}33`,
@@ -305,7 +306,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 width: 8, height: 8, borderRadius: "50%", background: COLORS.accent,
                 display: "inline-block", boxShadow: `0 0 6px ${COLORS.accent}`,
               }} />
-              Connected to room <strong style={{ color: COLORS.accent }}>{quiz.roomCode}</strong>
+              {copy.game.connectedTo} <strong style={{ color: COLORS.accent }}>{quiz.roomCode}</strong>
             </div>
           </div>
         )}
@@ -319,7 +320,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
               alignItems: "center", marginBottom: 16,
             }}>
               <span style={{ color: COLORS.muted, fontSize: 13 }}>
-                Question {currentQ + 1} / {quiz.questions.length}
+                {copy.game.questionOf(currentQ + 1, quiz.questions.length)}
               </span>
               <div style={{
                 fontFamily: "Orbitron, sans-serif", fontSize: 28, fontWeight: 900,
@@ -383,10 +384,10 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
               {selectedAnswer !== null ? "✅" : "⏱️"}
             </div>
             <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: COLORS.text }}>
-              {selectedAnswer !== null ? "Answer submitted!" : "Time's up!"}
+              {selectedAnswer !== null ? copy.game.answerSent : copy.game.timeout}
             </h3>
             <p style={{ color: COLORS.muted }}>
-              Waiting for all students to answer...
+              {copy.game.waitingAllAnswers}
             </p>
           </div>
         )}
@@ -398,7 +399,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
               textAlign: "center", fontFamily: "Orbitron, sans-serif",
               fontSize: 18, marginBottom: 20, color: COLORS.accent,
             }}>
-              QUESTION {currentQ + 1} RESULTS
+              {copy.game.results(currentQ + 1)}
             </div>
 
             {/* Question description */}
@@ -412,7 +413,9 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
 
             {(() => {
               const gotIt = (myScore?.lastPoints ?? 0) > 0;
-              const label = gotIt ? "⚡ Correct!" : selectedAnswer === null ? "⏱️ Time's up" : "✗ Wrong answer";
+              const label = gotIt
+                ? copy.game.correct
+                : selectedAnswer === null ? `⏱️ ${copy.game.timeout}` : copy.game.incorrect;
               return (
               <div style={{
                 background: gotIt ? `${COLORS.accent}22` : `${COLORS.red}22`,
@@ -424,7 +427,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 <div style={{ fontSize: 16, fontWeight: 700 }}>{label}</div>
                 {gotIt && myScore?.lastPlace && (
                   <div style={{ fontSize: 13, marginTop: 4, opacity: 0.85 }}>
-                    {placeLabel(myScore.lastPlace)} to answer correctly
+                    {copy.game.placeToAnswer(placeLabel(myScore.lastPlace))}
                   </div>
                 )}
                 <div style={{
@@ -436,7 +439,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                   ⬡ {gotIt ? pointsToTokens(myScore.lastPoints) : 0} QTKN
                 </div>
                 {gotIt && myScore?.streak >= 2 && (
-                  <div style={{ fontSize: 13, marginTop: 4 }}>🔥 {myScore.streak} streak</div>
+                  <div style={{ fontSize: 13, marginTop: 4 }}>{copy.game.streakBadge(myScore.streak)}</div>
                 )}
               </div>
               );
@@ -482,7 +485,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
             )}
 
             <p style={{ textAlign: "center", color: COLORS.muted, fontSize: 13 }}>
-              Waiting for host to continue...
+              {copy.game.waitingNextQuestion}
             </p>
           </div>
         )}
@@ -492,19 +495,19 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
         <div style={{ textAlign: "center", paddingTop: 40 }}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>😔</div>
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, marginBottom: 8, color: COLORS.text }}>
-            Session Ended
+            {copy.game.cancelledTitle}
             </h2>
             <p style={{ color: COLORS.muted, marginBottom: 24 }}>
-            The host ended the session without distributing rewards.
+            {copy.game.cancelledBody}
             </p>
             {myScore && (
             <div style={{
                 background: COLORS.card, border: `1px solid ${COLORS.border}`,
                 borderRadius: 12, padding: 20, marginBottom: 24,
             }}>
-                <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 8 }}>YOUR SCORE</div>
+                <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 8 }}>{copy.game.yourScore}</div>
                 <div style={{ fontSize: 24, fontWeight: 900, color: COLORS.text }}>
-                {myScore.correct}/{quiz.questions.length} correct
+                {copy.game.correctOf(myScore.correct, quiz.questions.length)}
                 </div>
             </div>
             )}
@@ -517,7 +520,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 fontSize: 14, cursor: "pointer",
                 fontFamily: "Space Grotesk, sans-serif",
             }}>
-            Back to Home
+            {copy.game.backHome}
             </button>
         </div>
         )}
@@ -527,30 +530,30 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>🏁</div>
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, marginBottom: 8, color: COLORS.text }}>
-              Quiz Complete!
+              {copy.game.finishedTitle}
             </h2>
             {myScore && (
               <div style={{
                 background: COLORS.card, border: `1px solid ${COLORS.border}`,
                 borderRadius: 12, padding: 24, marginBottom: 24,
               }}>
-                <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 12 }}>YOUR SCORE</div>
+                <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 12 }}>{copy.game.yourScore}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
                   <div>
                     <div style={{ fontSize: 28, fontWeight: 900, color: COLORS.text }}>
                       {myScore.correct}/{quiz.questions.length}
                     </div>
-                    <div style={{ fontSize: 12, color: COLORS.muted }}>Correct</div>
+                    <div style={{ fontSize: 12, color: COLORS.muted }}>{copy.game.statCorrect}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 28, fontWeight: 900, color: COLORS.accent }}>
                       {myScore.totalPoints ?? 0}
                     </div>
-                    <div style={{ fontSize: 12, color: COLORS.muted }}>Points</div>
+                    <div style={{ fontSize: 12, color: COLORS.muted }}>{copy.game.statQtkn}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 28, fontWeight: 900 }}>{getRankEmoji(myRank)}</div>
-                    <div style={{ fontSize: 12, color: COLORS.muted }}>Rank</div>
+                    <div style={{ fontSize: 12, color: COLORS.muted }}>{copy.game.statRank}</div>
                   </div>
                 </div>
               </div>
@@ -561,7 +564,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
             )}
 
             <p style={{ color: COLORS.muted, fontSize: 14 }}>
-              ⏳ Waiting for host to distribute rewards...
+              {copy.game.waitingRewards}
             </p>
           </div>
         )}
@@ -571,13 +574,13 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, marginBottom: 8, color: COLORS.accent }}>
-              Tokens Received!
+              {copy.game.claimedTitle}
             </h2>
             <div style={{
               background: `${COLORS.accent}11`, border: `1px solid ${COLORS.accent}44`,
               borderRadius: 12, padding: 24, marginBottom: 24,
             }}>
-              <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 8 }}>YOU RECEIVED</div>
+              <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 8 }}>{copy.game.claimedLabel}</div>
               <div style={{
                 fontFamily: "Orbitron, sans-serif", fontSize: 42, fontWeight: 900,
                 color: COLORS.accent,
@@ -586,11 +589,11 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
               </div>
               {balance && (
                 <div style={{ fontSize: 13, color: COLORS.muted, marginTop: 8 }}>
-                  Your new balance: <strong style={{ color: COLORS.text }}>{balance} QTKN</strong>
+                  {copy.game.newBalance}: <strong style={{ color: COLORS.text }}>{balance} QTKN</strong>
                 </div>
               )}
               <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 8 }}>
-                Sent to {formatAddress(wallet?.address)} on Sepolia
+                {copy.game.sentTo(formatAddress(wallet?.address))}
               </div>
             </div>
             <a
@@ -604,7 +607,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 fontFamily: "JetBrains Mono, monospace", fontSize: 11,
                 color: COLORS.accent, textDecoration: "none",
               }}>
-              🔗 View on Etherscan
+              {copy.game.viewOnEtherscan}
             </a>
 
             <br />
@@ -617,7 +620,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 fontSize: 14, cursor: "pointer",
                 fontFamily: "Space Grotesk, sans-serif",
               }}>
-              Play Again
+              {copy.game.playAgain}
             </button>
           </div>
         )}
