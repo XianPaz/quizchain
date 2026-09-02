@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "node ../shared/gameContract.test.js && node roomCodes.test.js"
+    "test": "node ../shared/gameContract.test.js && node scoring.test.js && node sessionStore.test.js && node roomCodes.test.js"
   },
   "keywords": [],
   "author": "",
