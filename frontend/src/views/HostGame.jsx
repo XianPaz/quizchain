@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuizSocket } from "../hooks/useQuizSocket";
+import { useDeadlineTimer } from "../hooks/useDeadlineTimer";
 import { COLORS } from "../styles/colors";
 import { getRankEmoji, formatAddress } from "../utils/helpers";
 import { distributeRewards } from "../utils/blockchain";
@@ -21,34 +22,50 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
   const [txHash, setTxHash] = useState(null);
   const [distributeError, setDistributeError] = useState("");
   const [highlights, setHighlights] = useState(null);
-  const [timeRemaining, setTimeRemaining] = useState(0);
-  const timerRef = useRef(null);
-
-  const clearTimer = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-  };
-
-  const startCountdown = (seconds) => {
-    clearTimer();
-    setTimeRemaining(seconds);
-    timerRef.current = setInterval(() => {
-      setTimeRemaining((prev) => {
-        if (prev <= 1) {
-          clearTimer();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
+  const [commandError, setCommandError] = useState("");
+  const { timeRemaining, arm: armDeadlineTimer, stop: clearTimer } = useDeadlineTimer();
+  // The socket handlers are registered once, so they read changing values from refs.
+  const playersRef = useRef([]);
+  const applyResumeRef = useRef(() => {});
+  useEffect(() => {
+    playersRef.current = players;
+  }, [players]);
 
   const { emit } = useQuizSocket(quiz.roomCode, "host", {
     
     player_joined: ({ players }) => setPlayers(players),
-    
+
+    // The console used to move on its own before the server answered, and the
+    // countdown was a local decrement that drifted when the tab was throttled.
+    // Both now follow question_opened and the server deadline.
+    question_opened: ({ questionIndex, timeLimit }) => {
+      setCommandError("");
+      setCurrentQ(questionIndex);
+      setQuestionStats(null);
+      setHighlights(null);
+      setAllAnswered(false);
+      setAnswerCount({ answered: 0, total: playersRef.current.length });
+      setPhase("question_active");
+      const limit = timeLimit ?? quiz.questions[questionIndex]?.timeLimit;
+      armDeadlineTimer(limit, limit);
+    },
+
+    quiz_started: () => setCommandError(""),
+
+    // After a socket reconnect the server sends the whole room state again. Without
+    // this the console kept showing the phase from before the drop.
+    session_resumed: (data) => {
+      setCommandError("");
+      applyResumeRef.current(data);
+    },
+
+    host_command_rejected: ({ reason }) => {
+      // Solo se frena el reloj si la sala no puede seguir con esta pregunta.
+      // Si no, la pantalla quedaba congelada mientras el servidor seguía contando.
+      if (reason === "session_gone" || reason === "not_a_host") clearTimer();
+      setCommandError(copy.host.rejected[reason] || copy.host.rejected.default);
+    },
+
     answer_count: (data) => {
       setAnswerCount(data);
       if (data.answered >= data.total) setAllAnswered(true);
@@ -71,12 +88,13 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
     rewards_distributed: () => setPhase("distributing"),
   });
 
-  useEffect(() => {
-    if (!resumeData) return;
+  // Reused by the resume prop and by session_resumed after a socket reconnect.
+  const applyResume = (data) => {
+    if (!data) return;
+    const { status, currentQuestion, scores, players, questionStats, answeredCount, txHash, remainingTime, highlights } = data;
 
-    const { status, currentQuestion, scores, players, questionStats, answeredCount, txHash, remainingTime, highlights } = resumeData;
-
-    setPlayers(players || []);
+    const roster = players || [];
+    setPlayers(roster);
     setScores(scores || {});
     setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
     if (highlights) setHighlights(highlights);
@@ -86,11 +104,11 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
     } else if (status === "question_open") {
       setPhase("question_active");
       const answered = answeredCount ?? 0;
-      const total = players.length;
+      const total = roster.length;
       setAnswerCount({ answered, total });
       setAllAnswered(answered >= total && total > 0);
       const q = quiz.questions[currentQuestion === -1 ? 0 : currentQuestion];
-      startCountdown(remainingTime ?? q?.timeLimit ?? 20);
+      armDeadlineTimer(remainingTime, q?.timeLimit);
     } else if (status === "showing_stats") {
       if (questionStats) setQuestionStats(questionStats);
       setPhase("showing_stats");
@@ -100,18 +118,21 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
       if (txHash) setTxHash(txHash);
       setPhase("distributing");
     }
+  };
+
+  useEffect(() => {
+    applyResumeRef.current = applyResume;
+  });
+
+  useEffect(() => {
+    applyResumeRef.current(resumeData);
   }, [resumeData]);
 
 
-  useEffect(() => () => clearTimer(), []);
 
   const startQuiz = () => {
+    setCommandError("");
     emit("host_start_quiz");
-    setPhase("question_active");
-    setAllAnswered(false);
-    setAnswerCount({ answered: 0, total: players.length });
-    setHighlights(null);
-    startCountdown(quiz.questions[0]?.timeLimit || 20);
     emit("host_open_question", { questionIndex: 0 });
   };
 
@@ -120,17 +141,11 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
   };
 
   const nextQuestion = () => {
+    setCommandError("");
     const next = currentQ + 1;
     if (next >= quiz.questions.length) {
       emit("host_end_quiz");
     } else {
-      setCurrentQ(next);
-      setAllAnswered(false);
-      setAnswerCount({ answered: 0, total: players.length });
-      setQuestionStats(null);
-      setHighlights(null);
-      setPhase("question_active");
-      startCountdown(quiz.questions[next]?.timeLimit || 20);
       emit("host_open_question", { questionIndex: next });
     }
   };
@@ -184,6 +199,16 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
       </div>
 
       <div style={{ maxWidth: 700, margin: "0 auto", padding: "32px 20px" }}>
+
+        {commandError && (
+          <div style={{
+            background: `${COLORS.red}11`, border: `1px solid ${COLORS.red}44`,
+            borderRadius: 8, padding: "10px 14px", marginBottom: 16,
+            color: COLORS.red, fontSize: 13, textAlign: "center",
+          }}>
+            ⚠️ {commandError}
+          </div>
+        )}
 
         {/* LOBBY */}
         {phase === "lobby" && (
