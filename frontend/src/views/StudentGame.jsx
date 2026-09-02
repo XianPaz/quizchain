@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuizSocket } from "../hooks/useQuizSocket";
+import { useDeadlineTimer } from "../hooks/useDeadlineTimer";
 import { COLORS } from "../styles/colors";
 import { formatAddress, getRankEmoji, placeLabel, pointsToTokens, normalizeAddress } from "../utils/helpers";
 import { getTokenBalance } from "../utils/blockchain";
@@ -13,7 +14,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
   const [phase, setPhase] = useState("lobby_wait");
   // lobby_wait | answering | answer_wait | viewing_stats | finished | claiming | claimed
   const [currentQ, setCurrentQ] = useState(0);
-  const [timeRemaining, setTimeRemaining] = useState(0);
+  const { timeRemaining, arm: armDeadlineTimer, stop: clearTimer } = useDeadlineTimer();
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [answered, setAnswered] = useState(false);
   const [questionStats, setQuestionStats] = useState(null);
@@ -23,49 +24,28 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
   const [players, setPlayers] = useState([]);
   const [balance, setBalance] = useState(null);
   const [highlights, setHighlights] = useState(null);
-  const timerRef = useRef(null);
-  const questionOpenedAt = useRef(null);
-  const emitRef = useRef(null);
   const pendingRef = useRef(false);
+  // Los handlers del socket se registran una sola vez, así que leen de una ref.
+  const applyResumeRef = useRef(() => {});
 
-  const clearTimer = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
+  const onDeadlineReached = () => {
+    setPhase((prev) => (prev === "answering" ? "answer_wait" : prev));
   };
 
-  const secondsLeft = (deadline, fallback) => {
-    if (deadline != null) return Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
-    return fallback ?? 0;
+  // Se le pasa cuánto falta, no la hora del servidor: el reloj del celular puede
+  // estar corrido y la resta daría cero.
+  const armQuestion = (secondsLeft, timeLimit) => {
+    armDeadlineTimer(secondsLeft, timeLimit, onDeadlineReached);
   };
 
-  const armDeadlineTimer = (deadline, timeLimit) => {
-    clearTimer();
-    const limit = timeLimit || 20;
-    const left = secondsLeft(deadline, limit);
-    setTimeRemaining(left);
-    questionOpenedAt.current = deadline != null ? deadline - limit * 1000 : Date.now();
-    if (left <= 0) {
-      setPhase((prev) => (prev === "answering" ? "answer_wait" : prev));
-      return;
-    }
-    timerRef.current = setInterval(() => {
-      const next = secondsLeft(deadline, 0);
-      setTimeRemaining(next);
-      if (next <= 0) {
-        clearTimer();
-        setPhase((prev) => (prev === "answering" ? "answer_wait" : prev));
-      }
-    }, 250);
-  };
-
-  useEffect(() => {
-    if (!resumeData) return;
+  // Usado por la prop resumeData y por session_resumed cuando vuelve el socket.
+  // Estaba escrito dos veces, y la copia del socket no tenía estas guardas.
+  const applyResume = (data) => {
+    if (!data) return;
     const {
       status, currentQuestion, scores, players, alreadyAnswered,
-      questionStats, remainingTime, deadline, highlights,
-    } = resumeData;
+      questionStats, remainingTime, highlights,
+    } = data;
 
     setPlayers(players || []);
     setAllScores(scores || {});
@@ -81,10 +61,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
       } else {
         setPhase("answering");
         const q = quiz.questions[currentQuestion === -1 ? 0 : currentQuestion];
-        const fromRemaining = remainingTime != null
-          ? Date.now() + remainingTime * 1000
-          : null;
-        armDeadlineTimer(deadline ?? fromRemaining, q?.timeLimit);
+        armQuestion(remainingTime, q?.timeLimit);
       }
     } else if (status === "showing_stats") {
       if (questionStats) setQuestionStats(questionStats);
@@ -94,9 +71,15 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
     } else if (status === "claiming") {
       setPhase("claiming");
     }
-  }, [resumeData]);
+  };
 
-  useEffect(() => () => clearTimer(), []);
+  useEffect(() => {
+    applyResumeRef.current = applyResume;
+  });
+
+  useEffect(() => {
+    applyResumeRef.current(resumeData);
+  }, [resumeData]);
 
   useEffect(() => {
     if (phase === "claiming" && wallet?.address) {
@@ -113,7 +96,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
       setPhase("lobby_wait"); // wait for first question_opened
     },
 
-    question_opened: ({ questionIndex, deadline, timeLimit }) => {
+    question_opened: ({ questionIndex, timeLimit }) => {
       clearTimer();
       pendingRef.current = false;
       setCurrentQ(questionIndex);
@@ -123,7 +106,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
       setHighlights(null);
       setPhase("answering");
       const limit = timeLimit || quiz.questions[questionIndex]?.timeLimit;
-      armDeadlineTimer(deadline, limit);
+      armQuestion(limit, limit);
     },
 
     answer_ack: () => {
@@ -135,9 +118,13 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
 
     answer_rejected: ({ reason }) => {
       pendingRef.current = false;
-      if (reason === "after_deadline" || reason === "question_not_open") {
+      // duplicate: la respuesta ya quedó registrada en el servidor. Volver a
+      // "podés responder" la hacía desaparecer de la pantalla y el alumno
+      // reintentaba para siempre. seat_moved tampoco se puede reintentar.
+      const noSeRetoca = ["after_deadline", "question_not_open", "duplicate", "seat_moved"];
+      if (noSeRetoca.includes(reason)) {
         clearTimer();
-        setSelectedAnswer(null);
+        if (reason !== "duplicate") setSelectedAnswer(null);
         setAnswered(true);
         setPhase("answer_wait");
         return;
@@ -169,42 +156,8 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
       setPhase("claiming");
     },
 
-    session_resumed: ({
-      status, currentQuestion, scores, players, alreadyAnswered,
-      questionStats, highlights, remainingTime, deadline,
-    }) => {
-      setPlayers(players);
-      setAllScores(scores);
-      setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
-      if (highlights) setHighlights(highlights);
-
-      if (status === "waiting" || status === "active") {
-        setPhase("lobby_wait");
-      } else if (status === "question_open") {
-        setAnswered(alreadyAnswered);
-        if (alreadyAnswered) {
-          setPhase("answer_wait");
-        } else {
-          setPhase("answering");
-          const q = quiz.questions[currentQuestion === -1 ? 0 : currentQuestion];
-          const fromRemaining = remainingTime != null
-            ? Date.now() + remainingTime * 1000
-            : null;
-          armDeadlineTimer(deadline ?? fromRemaining, q?.timeLimit);
-        }
-      } else if (status === "showing_stats") {
-        if (questionStats) setQuestionStats(questionStats);
-        setPhase("viewing_stats");
-      } else if (status === "finished") {
-        setPhase("finished");
-      } else if (status === "claiming") {
-        setPhase("claiming");
-      }
-    },
-
+    session_resumed: (data) => applyResumeRef.current(data),
   });
-
-  emitRef.current = emit;
 
   const handleAnswer = (answerIndex) => {
     if (answered || pendingRef.current || phase !== "answering") return;
@@ -216,7 +169,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
     });
   };
 
-  // El puesto lo calcula el servidor, que empata y paga por ese mismo puesto.
+  // The place comes from the server, which ranks with ties and pays by that rank.
   const myRank = myScore?.rank ?? (rankedScores(allScores).findIndex(
     (s) => s.address === myAddress
   ) + 1);
