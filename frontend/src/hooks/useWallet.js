@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { CONTRACTS } from "../config";
+import { normalizeAddress } from "../utils/helpers";
 
 export function useWallet() {
   const [wallet, setWallet] = useState(null);
@@ -12,7 +13,7 @@ export function useWallet() {
     window.ethereum.request({ method: "eth_accounts" })
       .then(accounts => {
         if (accounts.length > 0 && isValidAddress(accounts[0])) {
-          setWallet({ address: accounts[0], balance: 0 });
+          setWallet({ address: normalizeAddress(accounts[0]), balance: 0 });
         }
       })
       .catch(() => {});
@@ -34,7 +35,7 @@ export function useWallet() {
           setError("Invalid wallet address detected.");
           return;
         }
-        setWallet(prev => prev ? { ...prev, address } : null);
+        setWallet(prev => prev ? { ...prev, address: normalizeAddress(address) } : null);
       }
     };
 
@@ -111,7 +112,7 @@ export function useWallet() {
         return;
       }
 
-      setWallet({ address: finalAddress, balance: 0 });
+      setWallet({ address: normalizeAddress(finalAddress), balance: 0 });
       setError("");
 
     } catch (e) {
