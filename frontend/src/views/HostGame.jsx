@@ -1,13 +1,14 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuizSocket } from "../hooks/useQuizSocket";
 import { COLORS } from "../styles/colors";
 import { getRankEmoji, formatAddress } from "../utils/helpers";
-import { distributeRewards, isMinter } from "../utils/blockchain";
+import { distributeRewards } from "../utils/blockchain";
+import HighlightsBanner from "../components/HighlightsBanner";
 
 function Leaderboard({ scores, players, quiz }) {
   const sorted = Object.entries(scores)
     .map(([address, s]) => ({ address, ...s }))
-    .sort((a, b) => (b.totalTokens ?? 0) - (a.totalTokens ?? 0));
+    .sort((a, b) => (b.totalPoints ?? b.totalTokens ?? 0) - (a.totalPoints ?? a.totalTokens ?? 0));
 
   // Build address → nickname map from players list
   const nicknameMap = {};
@@ -31,13 +32,14 @@ function Leaderboard({ scores, players, quiz }) {
             </span>
             <span style={{ color: COLORS.muted, fontSize: 12 }}>
               {p.correct}{quiz ? `/${quiz.questions.length}` : ""} correct
+              {p.streak >= 3 ? ` · 🔥${p.streak}` : ""}
             </span>
             <span style={{
               background: `${COLORS.accent}22`, border: `1px solid ${COLORS.accent}44`,
               borderRadius: 6, padding: "3px 8px",
               fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: COLORS.accent,
             }}>
-              ⬡ {p.totalTokens ?? "—"}
+              {p.totalPoints ?? p.totalTokens ?? "—"}
             </span>
           </div>
         ))}
@@ -58,6 +60,30 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
   const [distributingPending, setDistributingPending] = useState(false);
   const [txHash, setTxHash] = useState(null);
   const [distributeError, setDistributeError] = useState("");
+  const [highlights, setHighlights] = useState(null);
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const timerRef = useRef(null);
+
+  const clearTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  const startCountdown = (seconds) => {
+    clearTimer();
+    setTimeRemaining(seconds);
+    timerRef.current = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev <= 1) {
+          clearTimer();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
   const { emit } = useQuizSocket(quiz.roomCode, "host", {
     
@@ -69,9 +95,11 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
     },
     
     all_answered: () => setAllAnswered(true),
-        question_stats: (stats) => {
+    question_stats: (stats) => {
+      clearTimer();
       setQuestionStats(stats);
       if (stats.scores) setScores(stats.scores);
+      if (stats.highlights) setHighlights(stats.highlights);
       setPhase("showing_stats");
     },
     
@@ -86,11 +114,12 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
   useEffect(() => {
     if (!resumeData) return;
 
-    const { status, currentQuestion, scores, players, questionStats, answeredCount, txHash } = resumeData;
+    const { status, currentQuestion, scores, players, questionStats, answeredCount, txHash, remainingTime, highlights } = resumeData;
 
     setPlayers(players || []);
     setScores(scores || {});
     setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
+    if (highlights) setHighlights(highlights);
 
     if (status === "waiting" || status === "active") {
       setPhase("lobby");
@@ -100,6 +129,8 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
       const total = players.length;
       setAnswerCount({ answered, total });
       setAllAnswered(answered >= total && total > 0);
+      const q = quiz.questions[currentQuestion === -1 ? 0 : currentQuestion];
+      startCountdown(remainingTime ?? q?.timeLimit ?? 20);
     } else if (status === "showing_stats") {
       if (questionStats) setQuestionStats(questionStats);
       setPhase("showing_stats");
@@ -112,11 +143,15 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
   }, [resumeData]);
 
 
+  useEffect(() => () => clearTimer(), []);
+
   const startQuiz = () => {
     emit("host_start_quiz");
     setPhase("question_active");
     setAllAnswered(false);
     setAnswerCount({ answered: 0, total: players.length });
+    setHighlights(null);
+    startCountdown(quiz.questions[0]?.timeLimit || 20);
     emit("host_open_question", { questionIndex: 0 });
   };
 
@@ -133,7 +168,9 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
       setAllAnswered(false);
       setAnswerCount({ answered: 0, total: players.length });
       setQuestionStats(null);
+      setHighlights(null);
       setPhase("question_active");
+      startCountdown(quiz.questions[next]?.timeLimit || 20);
       emit("host_open_question", { questionIndex: next });
     }
   };
@@ -161,7 +198,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
   const question = quiz.questions[currentQ];
   const sortedScores = Object.entries(scores)
     .map(([address, s]) => ({ address, ...s }))
-    .sort((a, b) => b.totalTokens - a.totalTokens);
+    .sort((a, b) => (b.totalPoints ?? b.totalTokens ?? 0) - (a.totalPoints ?? a.totalTokens ?? 0));
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.bg, fontFamily: "Space Grotesk, sans-serif" }}>
@@ -262,8 +299,31 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
         {/* QUESTION ACTIVE */}
         {phase === "question_active" && (
           <div>
-            <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 16 }}>
-              Question {currentQ + 1} of {quiz.questions.length}
+            <div style={{
+              display: "flex", justifyContent: "space-between",
+              alignItems: "center", marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 13, color: COLORS.muted }}>
+                Question {currentQ + 1} of {quiz.questions.length}
+              </div>
+              <div style={{
+                fontFamily: "Orbitron, sans-serif", fontSize: 28, fontWeight: 900,
+                color: timeRemaining <= 5 ? COLORS.red : COLORS.accent,
+              }}>
+                {timeRemaining}s
+              </div>
+            </div>
+            <div style={{
+              height: 6, background: COLORS.border, borderRadius: 3,
+              overflow: "hidden", marginBottom: 20,
+            }}>
+              <div style={{
+                height: "100%",
+                background: timeRemaining <= 5 ? COLORS.red : COLORS.accent,
+                borderRadius: 3,
+                width: `${question?.timeLimit ? (timeRemaining / question.timeLimit) * 100 : 0}%`,
+                transition: "width 1s linear",
+              }} />
             </div>
 
             <div style={{
@@ -320,7 +380,9 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                 fontSize: 15, fontWeight: 700, cursor: "pointer",
                 fontFamily: "Space Grotesk, sans-serif",
               }}>
-              {allAnswered ? "✓ All answered — Show Results" : "⏭ Show Results Now"}
+              {allAnswered || timeRemaining === 0
+                ? "✓ Time's up — Show Results"
+                : "⏭ Close question now"}
             </button>
           </div>
         )}
@@ -388,6 +450,8 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
               </div>
             </div>
 
+            <HighlightsBanner highlights={highlights} />
+
             {Object.keys(scores).length > 0 && (
               <Leaderboard scores={scores} players={players} quiz={quiz} />
             )}
@@ -444,7 +508,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                       borderRadius: 6, padding: "4px 10px",
                       fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: COLORS.accent,
                     }}>
-                      ⬡ {p.totalTokens} QTKN
+                      {p.totalPoints ?? 0} pts · ⬡ {p.totalTokens} QTKN
                     </span>
                   </div>
                 );
