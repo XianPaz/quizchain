@@ -65,6 +65,29 @@ const QTKN_FIRST = 21;
 const QTKN_FLOOR_CORRECT = 10;
 const QTKN_INCORRECT = 0;
 
+// One spelling for a wallet address and one for a room code, shared by both sides.
+function normalizeAddress(address) {
+  if (!address || typeof address !== "string") return null;
+  const trimmed = address.trim();
+  if (!trimmed || trimmed === "undefined") return null;
+  return trimmed.toLowerCase();
+}
+
+function sameAddress(a, b) {
+  const left = normalizeAddress(a);
+  const right = normalizeAddress(b);
+  return !!left && left === right;
+}
+
+// "Cactus-Maple" and "  cactus   maple " are the same room.
+function normalizeRoomCode(input) {
+  return String(input ?? "")
+    .trim()
+    .replace(/-/g, " ")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
 function phaseFromStatus(status) {
   if (!status) return GAME_PHASE.LOBBY;
   if (Object.values(GAME_PHASE).includes(status)) return status;
@@ -163,25 +186,39 @@ function rankPlayers(scores) {
   });
 }
 
+// address -> rank, the shape the server stores as previousRanks.
+function ranksFromScores(scores) {
+  return rankPlayers(scores).reduce((map, row) => {
+    map[row.address] = row.rank;
+    return map;
+  }, {});
+}
+
+// rankPlayers() returns rows already sorted by rank, so the nearest better player is
+// always the row just before the current rank group starts. One pass, no nested scans.
 function withGaps(ranked) {
-  return (ranked || []).map((row) => {
-    const better = ranked.filter((other) => other.rank < row.rank);
-    const nearest = better.length ? better[better.length - 1] : null;
-    const tied = ranked.filter((other) => other.rank === row.rank).length > 1;
+  const rows = ranked || [];
+  const groupSize = new Map();
+  rows.forEach((row) => groupSize.set(row.rank, (groupSize.get(row.rank) || 0) + 1));
+
+  let groupRank = null;
+  let nearest = null;
+  return rows.map((row, i) => {
+    if (row.rank !== groupRank) {
+      groupRank = row.rank;
+      nearest = i > 0 ? rows[i - 1] : null;
+    }
     return {
       ...row,
       gapToNext: nearest ? nearest.totalQtkn - row.totalQtkn : 0,
       playerAhead: nearest ? nearest.address : null,
-      tied,
+      tied: (groupSize.get(row.rank) || 0) > 1,
     };
   });
 }
 
 function applyQuestionScores({ scores, awards }) {
-  const previousRanks = {};
-  rankPlayers(scores).forEach((row) => {
-    previousRanks[row.address] = row.rank;
-  });
+  const previousRanks = ranksFromScores(scores);
 
   const next = {};
   Object.entries(scores || {}).forEach(([address, score]) => {
@@ -201,13 +238,15 @@ function applyQuestionScores({ scores, awards }) {
   });
 
   const ranking = withGaps(rankPlayers(next));
+  const currentRanks = {};
   ranking.forEach((row) => {
+    currentRanks[row.address] = row.rank;
     if (!next[row.address]) return;
     next[row.address].rank = row.rank;
     next[row.address].gapToNext = row.gapToNext;
   });
 
-  return { scores: next, ranking, previousRanks };
+  return { scores: next, ranking, previousRanks, currentRanks };
 }
 
 function podiumMedal(rank) {
@@ -330,10 +369,15 @@ const gameContract = {
   QTKN_FLOOR_CORRECT,
   QTKN_INCORRECT,
   phaseFromStatus,
+  normalizeAddress,
+  sameAddress,
+  normalizeRoomCode,
   qtknForPlace,
   emptyPlayerScore,
   awardQuestionQtkn,
+  compareArrival,
   rankPlayers,
+  ranksFromScores,
   withGaps,
   applyQuestionScores,
   podiumMedal,
