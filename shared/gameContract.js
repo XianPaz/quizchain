@@ -101,6 +101,61 @@ function qtknForPlace(place) {
   return QTKN_BY_PLACE[n - 1];
 }
 
+const MIN_OPTIONS = 2;
+const MAX_OPTIONS = 6;
+
+// The one shape a question must have. The room stores it, the timer reads it and
+// the stats screen renders it, so a malformed question must be refused at the door.
+function validateQuestions(questions) {
+  if (!Array.isArray(questions) || questions.length === 0) {
+    return { ok: false, error: "questions are required" };
+  }
+
+  for (let i = 0; i < questions.length; i += 1) {
+    const q = questions[i];
+    const at = `question ${i + 1}`;
+    if (!q || typeof q !== "object") {
+      return { ok: false, error: `${at}: not an object` };
+    }
+
+    const text = q.question ?? q.text;
+    if (typeof text !== "string" || text.trim() === "") {
+      return { ok: false, error: `${at}: missing text` };
+    }
+
+    if (!Array.isArray(q.options)) {
+      return { ok: false, error: `${at}: missing options` };
+    }
+    if (q.options.length < MIN_OPTIONS || q.options.length > MAX_OPTIONS) {
+      return { ok: false, error: `${at}: needs ${MIN_OPTIONS} to ${MAX_OPTIONS} options` };
+    }
+    if (q.options.some((opt) => typeof opt !== "string" || opt.trim() === "")) {
+      return { ok: false, error: `${at}: an option is empty` };
+    }
+
+    if (!Number.isInteger(q.correct) || q.correct < 0 || q.correct >= q.options.length) {
+      return { ok: false, error: `${at}: correct must point at one of the options` };
+    }
+
+    if (q.timeLimit != null) {
+      const limit = Number(q.timeLimit);
+      if (!Number.isFinite(limit) || limit < 1 || limit > 600) {
+        return { ok: false, error: `${at}: timeLimit must be between 1 and 600 seconds` };
+      }
+    }
+  }
+
+  return { ok: true, error: null };
+}
+
+// A stored question is usable only if it still has the parts the room reads.
+function isUsableQuestion(question) {
+  return !!question
+    && Array.isArray(question.options)
+    && question.options.length > 0
+    && Number.isInteger(question.correct);
+}
+
 function emptyPlayerScore() {
   return {
     questionQtkn: 0,
@@ -374,6 +429,10 @@ const gameContract = {
   normalizeRoomCode,
   qtknForPlace,
   emptyPlayerScore,
+  MIN_OPTIONS,
+  MAX_OPTIONS,
+  validateQuestions,
+  isUsableQuestion,
   awardQuestionQtkn,
   compareArrival,
   rankPlayers,
