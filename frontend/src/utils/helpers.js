@@ -13,23 +13,14 @@ export function formatAddress(addr) {
   return addr.slice(0, 6) + "..." + addr.slice(-4);
 }
 
-export function calcPlacementPoints(place) {
-  return qtknForPlace(place);
-}
-
 export function pointsToTokens(qtkn) {
   return Number(qtkn) || 0;
 }
 
+// Ordinal en español: 1º, 2º, 3º.
 export function placeLabel(place) {
   if (!place) return "";
-  const n = Number(place);
-  const j = n % 10;
-  const k = n % 100;
-  if (j === 1 && k !== 11) return `${n}st`;
-  if (j === 2 && k !== 12) return `${n}nd`;
-  if (j === 3 && k !== 13) return `${n}rd`;
-  return `${n}th`;
+  return `${Number(place)}º`;
 }
 
 export function getRankEmoji(rank) {
