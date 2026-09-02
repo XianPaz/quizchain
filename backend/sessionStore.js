@@ -4,6 +4,7 @@ const {
   canAcceptAnswer,
   rankPlayers,
   withGaps,
+  isUsableQuestion,
   normalizeAddress,
 } = require("../shared/gameContract");
 
@@ -51,7 +52,24 @@ module.exports = {
     return sessions[roomCode] || null;
   },
 
+  // The only place that decides whether a question index is real. It checks the
+  // question itself too: an index in range but a question with no options would
+  // still throw in getQuestionStats.
+  hasQuestion(roomCode, questionIndex) {
+    const s = sessions[roomCode];
+    if (!s) return false;
+    if (!Number.isInteger(questionIndex)) return false;
+    if (questionIndex < 0 || questionIndex >= (s.questions || []).length) return false;
+    return isUsableQuestion(s.questions[questionIndex]);
+  },
+
+
   normalizeAddress,
+
+  isScored(roomCode, questionIndex) {
+    const s = sessions[roomCode];
+    return !!s && s.scoredQuestions.has(questionIndex);
+  },
 
   findPlayer(roomCode, address) {
     const s = sessions[roomCode];
@@ -109,6 +127,11 @@ module.exports = {
     if (!this.isPlayer(roomCode, key)) {
       return { ok: false, session: s, reason: "not_a_player" };
     }
+    // Check the index before touching s.answers. Creating the bucket first let a
+    // player grow the map without bound by sending indexes that get refused.
+    if (!this.hasQuestion(roomCode, questionIndex)) {
+      return { ok: false, session: s, reason: "wrong_question" };
+    }
     if (!s.answers[questionIndex]) s.answers[questionIndex] = {};
     const now = Date.now();
     const accepted = canAcceptAnswer({
@@ -138,8 +161,8 @@ module.exports = {
   },
 
   timeoutUnanswered(roomCode, questionIndex) {
+    if (!this.hasQuestion(roomCode, questionIndex)) return null;
     const s = sessions[roomCode];
-    if (!s) return null;
     if (!s.answers[questionIndex]) s.answers[questionIndex] = {};
     const question = s.questions[questionIndex];
     const timeLimit = question?.timeLimit || 20;
@@ -164,8 +187,8 @@ module.exports = {
   },
 
   getQuestionStats(roomCode, questionIndex) {
+    if (!this.hasQuestion(roomCode, questionIndex)) return null;
     const s = sessions[roomCode];
-    if (!s) return null;
     const question = s.questions[questionIndex];
     const answers = s.answers[questionIndex] || {};
     const distribution = question.options.map((_, i) => ({
@@ -186,8 +209,8 @@ module.exports = {
   },
 
   calculateScores(roomCode, questionIndex) {
+    if (!this.hasQuestion(roomCode, questionIndex)) return;
     const s = sessions[roomCode];
-    if (!s) return;
     if (s.scoredQuestions.has(questionIndex)) {
       this.calculateTokens(roomCode);
       return;
@@ -279,11 +302,15 @@ module.exports = {
   setStatus(roomCode, status) {
     if (!sessions[roomCode]) return null;
     sessions[roomCode].status = status;
+    // Marca desde cuándo la sala puede liberarse.
+    if (status === "finished" && !sessions[roomCode].finishedAt) {
+      sessions[roomCode].finishedAt = Date.now();
+    }
     return sessions[roomCode];
   },
 
   setCurrentQuestion(roomCode, index) {
-    if (!sessions[roomCode]) return null;
+    if (!this.hasQuestion(roomCode, index)) return null;
     const openedAt = Date.now();
     const timeLimit = sessions[roomCode].questions[index]?.timeLimit || 20;
     sessions[roomCode].currentQuestion = index;
@@ -314,5 +341,19 @@ module.exports = {
 
   delete(roomCode) {
     delete sessions[roomCode];
+  },
+
+  // Libera las salas terminadas o canceladas que ya pasaron su tiempo de vida.
+  // Devuelve los códigos liberados, para que quien llame limpie sus timers.
+  sweepFinished(ttlMs, now = Date.now()) {
+    const removed = [];
+    Object.entries(sessions).forEach(([code, s]) => {
+      if (s.status !== "finished" && s.status !== "distributing") return;
+      const since = s.finishedAt || s.createdAt || 0;
+      if (now - since < ttlMs) return;
+      delete sessions[code];
+      removed.push(code);
+    });
+    return removed;
   },
 };

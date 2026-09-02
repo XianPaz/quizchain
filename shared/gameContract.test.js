@@ -17,6 +17,8 @@ const {
   withGaps,
   applyQuestionScores,
   compareArrival,
+  validateQuestions,
+  isUsableQuestion,
   normalizeAddress,
   sameAddress,
   normalizeRoomCode,
@@ -257,5 +259,22 @@ assert.strictEqual(normalizeAddress("  0xAbC "), "0xabc");
 assert.strictEqual(normalizeAddress("undefined"), null);
 assert.strictEqual(sameAddress("0xAB", "0xab"), true);
 assert.strictEqual(normalizeRoomCode(" Cactus-Maple "), "cactus maple");
+
+// A quiz whose questions are malformed must be refused before it reaches a room.
+assert.strictEqual(validateQuestions([]).ok, false);
+assert.strictEqual(validateQuestions(null).ok, false);
+assert.strictEqual(validateQuestions([{ text: "x" }]).ok, false);
+assert.strictEqual(validateQuestions([{ text: "x", options: ["a"] }]).ok, false);
+assert.strictEqual(validateQuestions([{ text: "x", options: ["a", ""], correct: 0 }]).ok, false);
+assert.strictEqual(validateQuestions([{ text: "x", options: ["a", "b"], correct: 2 }]).ok, false);
+assert.strictEqual(validateQuestions([{ text: "x", options: ["a", "b"], correct: 0, timeLimit: 0 }]).ok, false);
+assert.strictEqual(validateQuestions([{ text: " ", options: ["a", "b"], correct: 0 }]).ok, false);
+assert.strictEqual(validateQuestions([{ question: "x", options: ["a", "b"], correct: 1 }]).ok, true);
+assert.strictEqual(validateQuestions([{ text: "x", options: ["a", "b"], correct: 0, timeLimit: 20 }]).ok, true);
+
+assert.strictEqual(isUsableQuestion({ options: ["a"], correct: 0 }), true);
+assert.strictEqual(isUsableQuestion({ options: ["a"] }), false);
+assert.strictEqual(isUsableQuestion({ correct: 0 }), false);
+assert.strictEqual(isUsableQuestion(undefined), false);
 
 console.log("gameContract.test.js passed");
