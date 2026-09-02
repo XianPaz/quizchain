@@ -267,20 +267,45 @@ contract QuizPodiumNFT is ERC721, Ownable {
         );
     }
 
+    function _rankDigit(uint8 rank) internal pure returns (string memory) {
+        if (rank == 1) return "1";
+        if (rank == 2) return "2";
+        return "3";
+    }
+
+    function _metalColor(uint8 rank) internal pure returns (string memory) {
+        if (rank == 1) return "#C9A227";
+        if (rank == 2) return "#A8B0B8";
+        return "#B0723E";
+    }
+
     function _imageURI(uint256 tokenId) internal view returns (string memory) {
         Podium storage p = _podiums[tokenId];
+        string memory metal = _metalColor(p.rank);
         string memory svg = string.concat(
-            "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'>",
-            "<rect width='100%' height='100%' fill='",
-            p.rank == 1 ? "#D4AF37" : (p.rank == 2 ? "#C0C0C0" : "#CD7F32"),
-            "'/>",
-            "<text x='50%' y='38%' text-anchor='middle' font-size='48'>",
-            medalName(p.rank),
-            "</text><text x='50%' y='54%' text-anchor='middle' font-size='24'>",
+            "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600' viewBox='0 0 600 600'>",
+            "<rect width='600' height='600' fill='#0E0E0D'/>",
+            "<circle cx='300' cy='248' r='118' fill='none' stroke='",
+            metal,
+            "' stroke-width='3'/>",
+            "<circle cx='300' cy='248' r='108' fill='none' stroke='",
+            metal,
+            "' stroke-width='1'/>",
+            "<text x='300' y='281' text-anchor='middle' font-family='sans-serif' font-size='92' font-weight='700' fill='",
+            metal,
+            "'>",
+            _rankDigit(p.rank),
+            "</text>",
+            "<text x='300' y='418' text-anchor='middle' font-family='serif' font-size='28' fill='#ECE8E0'>",
+            _escapeXML(p.nickname),
+            "</text>",
+            "<text x='300' y='452' text-anchor='middle' font-family='sans-serif' font-size='14' fill='#A09A8E'>",
             _escapeXML(p.className),
-            "</text><text x='50%' y='64%' text-anchor='middle' font-size='24'>",
+            "  ·  ",
             _escapeXML(p.date),
-            "</text></svg>"
+            "</text>",
+            "<text x='300' y='552' text-anchor='middle' font-family='sans-serif' font-size='11' letter-spacing='6' fill='#A09A8E'>QUIZCHAIN</text>",
+            "</svg>"
         );
         return string.concat("data:image/svg+xml;base64,", Base64.encode(bytes(svg)));
     }
