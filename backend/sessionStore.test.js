@@ -141,6 +141,24 @@ function seed(code, playerCount) {
   store.delete(code);
 }
 
+// a player who never answers is scored: streak reset, no QTKN, still ranked
+{
+  const code = room("silent");
+  seed(code, 2);
+  store.recordAnswer(code, 0, "0x0", 0);
+  store.timeoutUnanswered(code, 0);
+  store.calculateScores(code, 0);
+  const scores = store.getScores(code);
+  assert.strictEqual(scores["0x1"].questionQtkn, 0);
+  assert.strictEqual(scores["0x1"].streak, 0);
+  assert.strictEqual(scores["0x1"].lastCorrect, false);
+  assert.strictEqual(scores["0x1"].lastPlace, null);
+  assert.strictEqual(scores["0x1"].rank, 2);
+  assert.strictEqual(scores["0x0"].lastPoints, scores["0x0"].questionQtkn);
+  assert.strictEqual(scores["0x0"].totalTokens, scores["0x0"].totalQtkn);
+  store.delete(code);
+}
+
 // An index in range but a question with no options is not a usable question.
 {
   const code = room("broken");
