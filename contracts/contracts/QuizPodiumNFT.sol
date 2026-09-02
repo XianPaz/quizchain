@@ -132,6 +132,14 @@ contract QuizPodiumNFT is ERC721, Ownable {
         require(bytes(input.sessionId).length != 0, "Empty sessionId");
         require(input.rank >= 1 && input.rank <= 3, "Invalid rank");
 
+        // The metadata is written on chain and the token can never be re-minted, so
+        // text that no JSON or XML reader can carry is refused here, not mangled later.
+        _requireRenderable(input.sessionId);
+        _requireRenderable(input.quizName);
+        _requireRenderable(input.className);
+        _requireRenderable(input.date);
+        _requireRenderable(input.nickname);
+
         bytes32 key = _sessionKey(input.sessionId, to);
         require(_tokenBySessionStudent[key] == 0, "Already minted for session");
 
@@ -152,6 +160,18 @@ contract QuizPodiumNFT is ERC721, Ownable {
 
         _safeMint(to, tokenId);
         emit PodiumMinted(msg.sender, to, tokenId, input.sessionId, input.rank);
+    }
+
+    /// @dev Refuse C0 control bytes. Tab, newline and carriage return are legal in
+    /// both JSON and XML and are allowed; the rest break one or the other.
+    function _requireRenderable(string memory input) internal pure {
+        bytes memory data = bytes(input);
+        for (uint256 i = 0; i < data.length; i++) {
+            bytes1 c = data[i];
+            if (c < 0x20 && c != 0x09 && c != 0x0A && c != 0x0D) {
+                revert("Unprintable character");
+            }
+        }
     }
 
     function _sessionKey(string memory sessionId, address student) internal pure returns (bytes32) {
@@ -277,17 +297,65 @@ contract QuizPodiumNFT is ERC721, Ownable {
             _rankDigit(p.rank),
             "</text>",
             "<text x='300' y='418' text-anchor='middle' font-family='serif' font-size='28' fill='#ECE8E0'>",
-            p.nickname,
+            _escapeXML(p.nickname),
             "</text>",
             "<text x='300' y='452' text-anchor='middle' font-family='sans-serif' font-size='14' fill='#A09A8E'>",
-            p.className,
+            _escapeXML(p.className),
             "  ·  ",
-            p.date,
+            _escapeXML(p.date),
             "</text>",
             "<text x='300' y='552' text-anchor='middle' font-family='sans-serif' font-size='11' letter-spacing='6' fill='#A09A8E'>QUIZCHAIN</text>",
             "</svg>"
         );
         return string.concat("data:image/svg+xml;base64,", Base64.encode(bytes(svg)));
+    }
+
+    /// @dev The metadata is written on chain and the token is soulbound, so a name
+    /// that carries `&` or `<` would break the image for good. The JSON fields go
+    /// through Strings.escapeJSON; the SVG text needs the XML entities.
+    function _escapeXML(string memory input) internal pure returns (string memory) {
+        bytes memory data = bytes(input);
+        // Longest replacement is "&quot;" / "&apos;", 6 bytes for 1.
+        bytes memory buffer = new bytes(data.length * 6);
+        uint256 n = 0;
+
+        for (uint256 i = 0; i < data.length; i++) {
+            bytes1 c = data[i];
+            if (c == "&") {
+                n = _writeChunk(buffer, n, "&amp;");
+            } else if (c == "<") {
+                n = _writeChunk(buffer, n, "&lt;");
+            } else if (c == ">") {
+                n = _writeChunk(buffer, n, "&gt;");
+            } else if (c == '"') {
+                n = _writeChunk(buffer, n, "&quot;");
+            } else if (c == "'") {
+                n = _writeChunk(buffer, n, "&apos;");
+            } else if (c < 0x20 && c != 0x09 && c != 0x0A && c != 0x0D) {
+                // C0 control bytes are illegal in XML 1.0 and would leave the image
+                // unreadable in every wallet, for good. Drop them.
+                continue;
+            } else {
+                buffer[n] = c;
+                n++;
+            }
+        }
+
+        assembly {
+            mstore(buffer, n);
+        }
+        return string(buffer);
+    }
+
+    function _writeChunk(
+        bytes memory buffer,
+        uint256 offset,
+        bytes memory chunk
+    ) private pure returns (uint256) {
+        for (uint256 i = 0; i < chunk.length; i++) {
+            buffer[offset + i] = chunk[i];
+        }
+        return offset + chunk.length;
     }
 
     function _field(string memory key, string memory value) internal pure returns (string memory) {
