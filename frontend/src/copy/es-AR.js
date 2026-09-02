@@ -131,6 +131,9 @@ export const copy = {
     missingCorrect: (row) => `Fila ${row}: no encuentro la respuesta correcta (tiene que ser A–F).`,
     minOptions: (row) => `Fila ${row}: hacen falta por lo menos 2 opciones.`,
     maxOptions: (row) => `Fila ${row}: como máximo 6 opciones.`,
+    blankOption: (row, letter) =>
+      `Fila ${row}: la opción ${letter} está vacía y hay opciones después. ` +
+      `Dejá vacías solo las últimas columnas, si no la respuesta correcta se corre de lugar.`,
     correctMissingOption: (row, letter) =>
       `Fila ${row}: la respuesta "${letter}" apunta a una opción que no existe.`,
     badTime: (row) => `Fila ${row}: time_limit tiene que ser un número entre 5 y 120.`,

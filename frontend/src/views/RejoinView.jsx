@@ -1,7 +1,7 @@
 import { COLORS } from "../styles/colors";
 import { styles } from "../styles/styles";
 import { formatAddress } from "../utils/helpers";
-import { copy } from "../copy/es-AR";
+import { copy } from "../copy/es-AR.js";
 
 export default function RejoinView({ savedSession, wallet, onRejoin, onLeave }) {
   return (
