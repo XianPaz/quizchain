@@ -268,9 +268,15 @@ describe("QuizPodiumNFT", function () {
       expect(meta.image.startsWith("data:image/svg+xml;base64,")).to.equal(true);
 
       const svg = Buffer.from(meta.image.split(",")[1], "base64").toString("utf8");
+      expect(svg).to.include("#0E0E0D");
+      expect(svg).to.include("#A8B0B8");
+      expect(svg).to.include(">2</text>");
+      expect(svg).to.include(input.nickname);
       expect(svg).to.include(input.className);
       expect(svg).to.include(input.date);
-      expect(svg).to.include("Plata");
+      expect(svg).to.include("QUIZCHAIN");
+      expect(svg).to.not.include("Plata");
+      expect(svg).to.not.include(input.quizName);
 
       const traits = Object.fromEntries(meta.attributes.map((a) => [a.trait_type, a.value]));
       expect(traits.puesto).to.equal("Plata");
@@ -312,7 +318,7 @@ describe("QuizPodiumNFT", function () {
       expect(svg).to.include("&apos;0&apos;");
       expect(svg).to.include("&quot;09&quot;");
       // Every angle bracket left in the image is real SVG markup, not user text.
-      expect((svg.match(/<text /g) || []).length).to.equal(3);
+      expect((svg.match(/<text /g) || []).length).to.equal(4);
       expect(meta.clase).to.equal(hostile);
     });
 
