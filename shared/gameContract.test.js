@@ -16,6 +16,10 @@ const {
   rankPlayers,
   withGaps,
   applyQuestionScores,
+  compareArrival,
+  normalizeAddress,
+  sameAddress,
+  normalizeRoomCode,
   podiumMedal,
   publicPodium,
   personalResult,
@@ -225,5 +229,33 @@ assert.strictEqual(canAcceptAnswer({
 const opened = questionOpenedPayload({ questionIndex: 2, openedAt: 1000, timeLimit: 20 });
 assert.strictEqual(opened.deadline, 21000);
 assert.strictEqual(opened.timeLimit, 20);
+
+// withGaps walks the sorted ranking once. Gaps and ties must not change.
+const gapped = withGaps(rankPlayers({
+  a: { totalQtkn: 30, correct: 2 },
+  b: { totalQtkn: 21, correct: 1 },
+  c: { totalQtkn: 21, correct: 1 },
+  d: { totalQtkn: 5, correct: 1 },
+}));
+assert.deepStrictEqual(
+  gapped.map((r) => [r.rank, r.gapToNext, r.playerAhead, r.tied]),
+  [
+    [1, 0, null, false],
+    [2, 9, "a", true],
+    [2, 9, "a", true],
+    [4, 16, "c", false],
+  ]
+);
+
+// compareArrival is the only ordering rule, and a record with no seq arrives last.
+assert.ok(compareArrival({ arrivalSeq: 1 }, { arrivalSeq: 2 }) < 0);
+assert.ok(compareArrival({ receivedAt: 10 }, { arrivalSeq: 9 }) > 0);
+assert.strictEqual(compareArrival({ arrivalSeq: 3 }, { arrivalSeq: 3 }), 0);
+
+// The address and room-code spellings both sides depend on.
+assert.strictEqual(normalizeAddress("  0xAbC "), "0xabc");
+assert.strictEqual(normalizeAddress("undefined"), null);
+assert.strictEqual(sameAddress("0xAB", "0xab"), true);
+assert.strictEqual(normalizeRoomCode(" Cactus-Maple "), "cactus maple");
 
 console.log("gameContract.test.js passed");
