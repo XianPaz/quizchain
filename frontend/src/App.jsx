@@ -8,19 +8,39 @@ import StudentGame from "./views/StudentGame";
 import RejoinView from "./views/RejoinView";
 import { isMinter } from "./utils/blockchain";
 import { loadSession, saveSession, clearSession } from "./hooks/useSessionPersistence";
-import { SAMPLE_QUESTIONS } from "./constants/sampleData";
 
 import { createSession, validateSession, normalizeRoomCode } from "./api";
 import socket from "./socket";
+
+// Solo estos motivos significan que el lugar en la sala se perdió de verdad.
+// seat_taken es transitorio: el servidor todavía ve vivo el socket anterior
+// mientras el alumno reconecta, y borrar la sesión ahí lo dejaba afuera del quiz.
+const MOTIVOS_SIN_VUELTA = ["invalid_address", "invalid_room_code", "session_gone"];
+
+// Ni el reingreso ni la entrada pueden quedar esperando para siempre.
+const ESPERA_MAXIMA_MS = 12000;
+
+const MENSAJE_RECHAZO = {
+  seat_taken: "Esa wallet ya está en la sala.",
+  quiz_already_started: "El quiz ya arrancó.",
+  invalid_address: "La wallet no es válida.",
+  invalid_room_code: "Ese código de sala no existe. Son dos palabras.",
+  session_gone: "La sala se cerró.",
+  bad_host_token: "Esta sala ya no reconoce tu sesión de profe.",
+};
+
+function joinErrorMessage(reason) {
+  return MENSAJE_RECHAZO[reason] || "No se pudo entrar a la sala.";
+}
 
 export default function App() {
   const [view, setView]           = useState("landing");
   const [activeQuiz, setActiveQuiz] = useState(null);
   const { wallet, connect, disconnect, error: walletError, connecting } = useWallet();
   const [role, setRole] = useState(null); // "host" | "student"
-  const [activeSessions, setActiveSessions] = useState({});
   const [nickname, setNickname] = useState("");
   const [minterError, setMinterError] = useState("");
+  const [rejoinError, setRejoinError] = useState("");
   const [savedSession, setSavedSession] = useState(null);
   const [resumeData, setResumeData] = useState(null);
   const [studentResumeData, setStudentResumeData] = useState(null);
@@ -74,17 +94,31 @@ export default function App() {
           return;
         }
 
-        socket.once("session_resumed", (data) => {
+        // Los dos handlers se dan de baja juntos, y también solos si no llega
+        // respuesta: si quedaban armados, disparaban después en otro flujo.
+        let timeout = null;
+        const stopListening = () => {
+          if (timeout) clearTimeout(timeout);
+          socket.off("session_resumed", onResumed);
+          socket.off("join_rejected", onRejected);
+        };
+        const onResumed = (data) => {
+          stopListening();
           setStudentResumeData(data);
           setActiveQuiz(saved.quizData);
           setRole("student");
           if (saved.nickname) setNickname(saved.nickname);
           setView("game");
-        });
-        socket.once("join_rejected", () => {
+        };
+        const onRejected = ({ reason } = {}) => {
+          stopListening();
+          if (!MOTIVOS_SIN_VUELTA.includes(reason)) return;
           joinPayloadRef.current = null;
           clearSession();
-        });
+        };
+        socket.on("session_resumed", onResumed);
+        socket.on("join_rejected", onRejected);
+        timeout = setTimeout(stopListening, ESPERA_MAXIMA_MS);
         joinRoom({
           roomCode: saved.roomCode,
           player: { address: wallet.address, name: saved.nickname },
@@ -92,9 +126,11 @@ export default function App() {
         });
 
       }).catch(() => {
-        clearSession();
+        // Un 502 durante un deploy o una pérdida de señal no significan que la
+        // sala no exista. Se deja la sesión guardada para el próximo intento.
+        console.warn("No se pudo comprobar la sala; se conserva la sesión guardada.");
       });
-    } catch (e) {
+    } catch {
       clearSession();
     }
   }, [wallet?.address]);
@@ -164,24 +200,26 @@ export default function App() {
     const address = wallet?.address;
     if (!address) return { error: "Conectá MetaMask primero." };
 
-    const joinError = {
-      seat_taken: "Esa wallet ya está en la sala.",
-      quiz_already_started: "El quiz ya arrancó.",
-      invalid_address: "La wallet no es válida.",
-    };
-
     const outcome = await new Promise((resolve) => {
+      let timeout = null;
       const finish = (value) => {
+        if (timeout) clearTimeout(timeout);
         socket.off("join_accepted", onAccepted);
         socket.off("join_rejected", onRejected);
         resolve(value);
       };
       const onAccepted = () => finish({ success: true });
       const onRejected = ({ reason } = {}) => {
-        finish({ error: joinError[reason] || "No se pudo entrar a la sala." });
+        finish({ error: joinErrorMessage(reason) });
       };
       socket.once("join_accepted", onAccepted);
       socket.once("join_rejected", onRejected);
+      // Si el servidor no está, nunca llega ninguna de las dos, y sin esto el
+      // botón quedaba en "Entrando…" hasta recargar la página.
+      timeout = setTimeout(
+        () => finish({ error: "No se pudo contactar al servidor. Probá de nuevo." }),
+        ESPERA_MAXIMA_MS
+      );
 
       joinRoom({
         roomCode,
@@ -210,19 +248,39 @@ export default function App() {
   const handleRejoin = () => {
     if (!savedSession) return;
 
-    socket.once("session_resumed", (data) => {
+    let timeout = null;
+    const stopListening = () => {
+      if (timeout) clearTimeout(timeout);
+      socket.off("session_resumed", onResumed);
+      socket.off("join_rejected", onRejected);
+    };
+    const onResumed = (data) => {
+      stopListening();
+      setRejoinError("");
       setResumeData(data);
-      setActiveQuiz({ ...savedSession.quizData, roomCode: savedSession.roomCode });
-      setRole("host");
-      setView("game");
-    });
+    };
+    const onRejected = ({ reason } = {}) => {
+      stopListening();
+      // Antes salía a la pantalla inicial sin decir nada.
+      setRejoinError(joinErrorMessage(reason));
+      handleLeaveSession();
+    };
+    socket.on("session_resumed", onResumed);
+    socket.on("join_rejected", onRejected);
+    timeout = setTimeout(() => {
+      stopListening();
+      setRejoinError("No se pudo contactar al servidor. Probá de nuevo.");
+    }, ESPERA_MAXIMA_MS);
+
     joinRoom({
       roomCode: savedSession.roomCode,
       role: "host",
       hostToken: savedSession.hostToken,
     });
 
-    setActiveQuiz(savedSession.quizData);
+    // savedSession.quizData holds only { name, questions }. Without the room code
+    // HostGame mounts with quiz.roomCode undefined and registers no socket handlers.
+    setActiveQuiz({ ...savedSession.quizData, roomCode: savedSession.roomCode });
     setRole("host");
     setView("game");
   };
@@ -276,7 +334,6 @@ export default function App() {
         onJoin={handleJoinQuiz}
         onBack={() => setView("landing")}
         onConnectWallet={connect}
-        activeSessions={activeSessions}
         walletError={walletError}
         connecting={connecting}
       />
@@ -301,6 +358,7 @@ export default function App() {
       onDisconnect={disconnect}
       walletError={walletError}
       minterError={minterError}
+      sessionError={rejoinError}
       connecting={connecting}
     />
   );
