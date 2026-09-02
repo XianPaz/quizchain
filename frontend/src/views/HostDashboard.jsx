@@ -3,7 +3,7 @@ import { COLORS } from "../styles/colors";
 import { styles } from "../styles/styles";
 import WalletBar from "../components/WalletBar";
 import { parseQuizCSV } from "../utils/parseQuizCSV";
-import { copy } from "../copy/es-AR";
+import { copy } from "../copy/es-AR.js";
 
 export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError, connecting }) {
   const [tab, setTab] = useState("upload");

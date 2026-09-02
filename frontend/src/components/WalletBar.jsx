@@ -1,6 +1,6 @@
 import { formatAddress } from "../utils/helpers";
 import { COLORS } from "../styles/colors";
-import { copy } from "../copy/es-AR";
+import { copy } from "../copy/es-AR.js";
 
 export default function WalletBar({ wallet, onConnect, onDisconnect, error, connecting }) {
   return (
