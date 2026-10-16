@@ -1,9 +1,8 @@
-const { scoreAnswers, ranksFromScores, buildHighlights } = require("./scoring");
+const { scoreAnswers, buildHighlights } = require("./scoring");
 const {
   emptyPlayerScore,
   canAcceptAnswer,
-  rankPlayers,
-  withGaps,
+  applyQuestionScores,
   isUsableQuestion,
   normalizeAddress,
 } = require("../shared/gameContract");
@@ -62,7 +61,6 @@ module.exports = {
     if (questionIndex < 0 || questionIndex >= (s.questions || []).length) return false;
     return isUsableQuestion(s.questions[questionIndex]);
   },
-
 
   normalizeAddress,
 
@@ -217,49 +215,15 @@ module.exports = {
     }
     s.scoredQuestions.add(questionIndex);
 
-    s.previousRanks = ranksFromScores(s.scores);
-
     const question = s.questions[questionIndex];
     const answers = s.answers[questionIndex] || {};
-    const awarded = scoreAnswers({ answers, correctIndex: question.correct });
+    const awards = scoreAnswers({ answers, correctIndex: question.correct });
 
-    Object.entries(answers).forEach(([address, data]) => {
-      if (!s.scores[address]) return;
-      const result = awarded[address] || { qtkn: 0, points: 0, place: null, correct: false };
-      const qtkn = result.qtkn ?? result.points ?? 0;
-      const correct = data.answerIndex === question.correct;
-      if (correct) {
-        s.scores[address].correct++;
-        s.scores[address].streak = (s.scores[address].streak || 0) + 1;
-      } else {
-        s.scores[address].streak = 0;
-      }
-      s.scores[address].questionQtkn = qtkn;
-      s.scores[address].lastCorrect = correct;
-      s.scores[address].lastPoints = qtkn;
-      s.scores[address].lastPlace = result.place;
-      s.scores[address].totalQtkn = (s.scores[address].totalQtkn || 0) + qtkn;
-      s.scores[address].totalPoints = s.scores[address].totalQtkn;
-    });
-
-    s.players.forEach((p) => {
-      if (answers[p.address] || !s.scores[p.address]) return;
-      s.scores[p.address].streak = 0;
-      s.scores[p.address].questionQtkn = 0;
-      s.scores[p.address].lastCorrect = false;
-      s.scores[p.address].lastPoints = 0;
-      s.scores[p.address].lastPlace = null;
-    });
-
-    const ranked = withGaps(rankPlayers(s.scores));
-    ranked.forEach((row) => {
-      const score = s.scores[row.address];
-      if (!score) return;
-      score.previousRank = s.previousRanks[row.address] ?? null;
-      score.rank = row.rank;
-      score.gapToNext = row.gapToNext;
-      aliasLegacyScoreFields(score);
-    });
+    // One scoring rule, in the shared contract. This only adds the legacy field names.
+    const applied = applyQuestionScores({ scores: s.scores, awards });
+    s.previousRanks = applied.previousRanks;
+    s.scores = applied.scores;
+    Object.values(s.scores).forEach(aliasLegacyScoreFields);
 
     this.calculateTokens(roomCode);
     s.lastHighlights = buildHighlights({
@@ -267,7 +231,8 @@ module.exports = {
       scores: s.scores,
       answers,
       correctIndex: question.correct,
-      previousRanks: s.previousRanks,
+      previousRanks: applied.previousRanks,
+      currentRanks: applied.currentRanks,
     });
   },
 
