@@ -10,8 +10,20 @@ function resolveOrigin(options = {}) {
   return options.corsOrigin !== undefined ? options.corsOrigin : process.env.CLIENT_URL;
 }
 
+// Sin CLIENT_URL, cors y socket.io aceptan cualquier origen. No rompemos el
+// arranque, pero que no pase en silencio.
+function warnIfOriginOpen(origin) {
+  if (origin === undefined || origin === null) {
+    console.warn(
+      "AVISO: CLIENT_URL no está configurada. El servidor acepta pedidos de "
+      + "cualquier origen. Configurá CLIENT_URL con la URL del frontend."
+    );
+  }
+}
+
 function createApp(options = {}) {
   const origin = resolveOrigin(options);
+  warnIfOriginOpen(origin);
   const app = express();
   app.use(cors({ origin }));
   app.use(express.json());
@@ -33,8 +45,24 @@ function createServer(options = {}) {
   return { app, server, io };
 }
 
+// Cuánto vive una sala terminada antes de liberarse. El profe puede reconectar y
+// ver los resultados; después la sala y su código vuelven a estar libres.
+const FINISHED_ROOM_TTL_MS = 6 * 60 * 60 * 1000;
+const SWEEP_EVERY_MS = 15 * 60 * 1000;
+
 function attachSocketHandlers(io) {
   const questionTimers = {};
+
+  // Las sesiones viven en memoria y nada las borraba. Cada sala terminada se
+  // quedaba con sus jugadores, todas sus respuestas y su código de dos palabras.
+  const sweep = setInterval(() => {
+    const removed = store.sweepFinished(FINISHED_ROOM_TTL_MS);
+    removed.forEach((code) => {
+      clearQuestionTimer(code);
+      console.log(`Room ${code} released`);
+    });
+  }, SWEEP_EVERY_MS);
+  sweep.unref?.();
 
   function clearQuestionTimer(roomCode) {
     if (questionTimers[roomCode]) {
@@ -44,14 +72,15 @@ function attachSocketHandlers(io) {
   }
 
   function emitQuestionResults(roomCode, questionIndex) {
-    const session = store.get(roomCode);
-    if (!session) return;
+    if (!store.hasQuestion(roomCode, questionIndex)) return;
     store.timeoutUnanswered(roomCode, questionIndex);
     store.calculateScores(roomCode, questionIndex);
-    store.setStatus(roomCode, "showing_stats");
     const stats = store.getQuestionStats(roomCode, questionIndex);
     const scores = store.getScores(roomCode);
     const highlights = store.getHighlights(roomCode);
+    // Advance only once the payload is ready, so a room is never left saying
+    // "showing_stats" with no stats on the way.
+    store.setStatus(roomCode, "showing_stats");
     io.to(roomCode).emit("question_stats", { ...stats, scores, highlights });
   }
 
@@ -66,16 +95,35 @@ function attachSocketHandlers(io) {
       if (!current) return;
       if (current.status !== "question_open") return;
       if (current.currentQuestion !== questionIndex) return;
-      emitQuestionResults(roomCode, questionIndex);
-      console.log(`Question ${questionIndex} timed out in room ${roomCode}`);
+      // This runs outside any request. An error escaping here would end the whole
+      // process, so it is caught and kept inside this room.
+      try {
+        emitQuestionResults(roomCode, questionIndex);
+        console.log(`Question ${questionIndex} timed out in room ${roomCode}`);
+      } catch (err) {
+        console.error(`Failed to close question ${questionIndex} in room ${roomCode}:`, err);
+        io.to(roomCode).emit("room_error", { reason: "close_question_failed", questionIndex });
+      }
     }, timeLimit * 1000);
   }
 
-  function requireHost(socket) {
+  // A dropped host command used to be silent, so the host console kept advancing
+  // on its own. Every rejection now names a reason the client can show.
+  function rejectHostCommand(socket, command, reason) {
+    socket.emit("host_command_rejected", { command, reason });
+    return null;
+  }
+
+  function requireHost(socket, command) {
     const code = socket.data.roomCode;
-    if (socket.data.role !== "host" || !code) return null;
+    if (socket.data.role !== "host" || !code) {
+      return rejectHostCommand(socket, command, "not_a_host");
+    }
     const session = store.get(code);
-    if (!session || socket.id !== session.hostSocketId) return null;
+    if (!session) return rejectHostCommand(socket, command, "session_gone");
+    if (socket.id !== session.hostSocketId) {
+      return rejectHostCommand(socket, command, "host_moved");
+    }
     return { code, session };
   }
 
@@ -85,13 +133,20 @@ function attachSocketHandlers(io) {
     return !!(seated && seated.connected);
   }
 
-  function requireStudent(socket) {
+  function requireStudent(socket, questionIndex) {
+    const reject = (reason) => {
+      socket.emit("answer_rejected", { questionIndex, reason });
+      return null;
+    };
     const code = socket.data.roomCode;
     const address = store.normalizeAddress(socket.data.address);
-    if (socket.data.role !== "student" || !code || !address) return null;
+    if (socket.data.role !== "student" || !code || !address) return reject("not_a_player");
     const session = store.get(code);
+    if (!session) return reject("no_session");
     const player = store.findPlayer(code, address);
-    if (!session || !player || player.socketId !== socket.id) return null;
+    if (!player) return reject("not_a_player");
+    // The seat moved to another socket, usually this same student reconnecting.
+    if (player.socketId !== socket.id) return reject("seat_moved");
     return { code, address, session };
   }
 
@@ -123,14 +178,36 @@ function attachSocketHandlers(io) {
   io.on("connection", (socket) => {
     console.log("Connected:", socket.id);
 
-    socket.on("join_room", ({ roomCode, player, role, hostToken }) => {
+    // One room's error must not travel up and end the process. Every handler is
+    // wrapped, so a failure stays with the socket that caused it.
+    const on = (event, handler) => {
+      socket.on(event, (...args) => {
+        try {
+          handler(...args);
+        } catch (err) {
+          console.error(`Handler ${event} failed for ${socket.id}:`, err);
+          socket.emit("room_error", { reason: "handler_failed", event });
+        }
+      });
+    };
+
+    on("join_room", ({ roomCode, player, role, hostToken }) => {
       const code = parseRoomCode(roomCode);
-      if (!code) return;
+      if (!code) {
+        socket.emit("join_rejected", { reason: "invalid_room_code" });
+        return;
+      }
       const session = store.get(code);
-      if (!session) return;
+      if (!session) {
+        socket.emit("join_rejected", { reason: "session_gone" });
+        return;
+      }
 
       if (role === "host") {
-        if (!hostToken || hostToken !== session.hostToken) return;
+        if (!hostToken || hostToken !== session.hostToken) {
+          socket.emit("join_rejected", { reason: "bad_host_token" });
+          return;
+        }
         store.reconnectHost(code, socket.id);
         socket.data.roomCode = code;
         socket.data.role = "host";
@@ -226,19 +303,33 @@ function attachSocketHandlers(io) {
       io.to(code).emit("player_joined", { players: updated.players });
     });
 
-    socket.on("host_start_quiz", () => {
-      const ctx = requireHost(socket);
+    on("host_start_quiz", () => {
+      const ctx = requireHost(socket, "host_start_quiz");
       if (!ctx) return;
       store.setStatus(ctx.code, "active");
       io.to(ctx.code).emit("quiz_started");
       console.log(`Quiz started in room ${ctx.code}`);
     });
 
-    socket.on("host_open_question", ({ questionIndex }) => {
-      const ctx = requireHost(socket);
+    on("host_open_question", ({ questionIndex }) => {
+      const ctx = requireHost(socket, "host_open_question");
       if (!ctx) return;
+      if (!store.hasQuestion(ctx.code, questionIndex)) {
+        rejectHostCommand(socket, "host_open_question", "invalid_question_index");
+        return;
+      }
+      if (store.isScored(ctx.code, questionIndex)) {
+        rejectHostCommand(socket, "host_open_question", "already_scored");
+        return;
+      }
+      // Abrir otra pregunta con una abierta dejaba la anterior perdida para
+      // siempre: sin puntuar, sin estadísticas y con las respuestas tiradas.
+      if (ctx.session.status === "question_open"
+        && ctx.session.currentQuestion !== questionIndex) {
+        rejectHostCommand(socket, "host_open_question", "question_still_open");
+        return;
+      }
       const session = store.setCurrentQuestion(ctx.code, questionIndex);
-      if (!session) return;
       io.to(ctx.code).emit("question_opened", {
         questionIndex,
         openedAt: session.questionOpenedAt,
@@ -249,8 +340,8 @@ function attachSocketHandlers(io) {
       console.log(`Question ${questionIndex} opened in room ${ctx.code}`);
     });
 
-    socket.on("student_answer", ({ questionIndex, answerIndex }) => {
-      const ctx = requireStudent(socket);
+    on("student_answer", ({ questionIndex, answerIndex }) => {
+      const ctx = requireStudent(socket, questionIndex);
       if (!ctx) return;
       const result = store.recordAnswer(ctx.code, questionIndex, ctx.address, answerIndex);
       if (!result.ok) {
@@ -263,13 +354,23 @@ function attachSocketHandlers(io) {
       closeIfAllAnswered(ctx.code, questionIndex);
     });
 
-    socket.on("student_timeout", () => {
+    on("student_timeout", () => {
       // Client clocks are not trusted. The server deadline / host close writes -1.
     });
 
-    socket.on("host_show_stats", ({ questionIndex }) => {
-      const ctx = requireHost(socket);
+    on("host_show_stats", ({ questionIndex }) => {
+      const ctx = requireHost(socket, "host_show_stats");
       if (!ctx) return;
+      if (!store.hasQuestion(ctx.code, questionIndex)) {
+        rejectHostCommand(socket, "host_show_stats", "invalid_question_index");
+        return;
+      }
+      // Only the question that is actually open can be closed. A stale index used
+      // to close the wrong question and leave the live one unscored for good.
+      if (questionIndex !== ctx.session.currentQuestion) {
+        rejectHostCommand(socket, "host_show_stats", "not_the_open_question");
+        return;
+      }
       if (ctx.session.status === "showing_stats") {
         const stats = store.getQuestionStats(ctx.code, questionIndex);
         io.to(ctx.code).emit("question_stats", {
@@ -283,8 +384,8 @@ function attachSocketHandlers(io) {
       emitQuestionResults(ctx.code, questionIndex);
     });
 
-    socket.on("host_end_quiz", () => {
-      const ctx = requireHost(socket);
+    on("host_end_quiz", () => {
+      const ctx = requireHost(socket, "host_end_quiz");
       if (!ctx) return;
       clearQuestionTimer(ctx.code);
       store.calculateTokens(ctx.code);
@@ -294,8 +395,8 @@ function attachSocketHandlers(io) {
       console.log(`Quiz ended in room ${ctx.code}`);
     });
 
-    socket.on("host_end_without_distribute", () => {
-      const ctx = requireHost(socket);
+    on("host_end_without_distribute", () => {
+      const ctx = requireHost(socket, "host_end_without_distribute");
       if (!ctx) return;
       clearQuestionTimer(ctx.code);
       store.calculateTokens(ctx.code);
@@ -304,8 +405,8 @@ function attachSocketHandlers(io) {
       store.delete(ctx.code);
     });
 
-    socket.on("host_distribute", ({ txHash }) => {
-      const ctx = requireHost(socket);
+    on("host_distribute", ({ txHash }) => {
+      const ctx = requireHost(socket, "host_distribute");
       if (!ctx) return;
       store.setStatus(ctx.code, "distributing");
       const session = store.get(ctx.code);
@@ -315,7 +416,7 @@ function attachSocketHandlers(io) {
       console.log(`Rewards distributed in room ${ctx.code}`);
     });
 
-    socket.on("play_again", () => {
+    on("play_again", () => {
       socket.emit("redirect_lobby");
     });
 

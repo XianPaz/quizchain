@@ -418,6 +418,210 @@ async function scenarioTwentyFiveSmoke(h) {
   closeClients(host, students);
 }
 
+// A host command with a question index outside the quiz must be refused, and the
+// server must survive it. Before the fix this crashed the whole process 20 s later.
+async function scenarioBadQuestionIndex(h) {
+  const session = await h.createSession({ name: "bad index", questions: QUESTIONS });
+  const host = await h.connectHost(session.roomCode, session.hostToken);
+  const [alice] = await h.connectStudents(session.roomCode, specs(1), host);
+
+  host.startQuiz();
+  await alice.inbox.wait("quiz_started");
+
+  host.openQuestion(5);
+  const openRejected = await host.inbox.wait(
+    "host_command_rejected",
+    (p) => p.command === "host_open_question"
+  );
+  assert.equal(openRejected.reason, "invalid_question_index");
+
+  host.showStats(5);
+  const statsRejected = await host.inbox.wait(
+    "host_command_rejected",
+    (p) => p.command === "host_show_stats"
+  );
+  assert.equal(statsRejected.reason, "invalid_question_index");
+
+  assert.equal(h.session(session.roomCode).status, "active");
+  assert.equal(alice.inbox.last("question_opened"), undefined);
+
+  // The room still works after the refused commands.
+  host.openQuestion(0);
+  await alice.inbox.wait("question_opened", (p) => p.questionIndex === 0);
+  alice.answer({ questionIndex: 0, answerIndex: 0 });
+  await alice.inbox.wait("answer_ack");
+  await host.inbox.wait("question_stats");
+
+  closeClients(host, alice);
+}
+
+// Every join must get an answer. A room that is gone used to leave the student
+// waiting on an ack that never came, with the Join button stuck.
+async function scenarioJoinAlwaysAnswered(h) {
+  const session = await h.createSession({ name: "join answers", questions: QUESTIONS });
+  const host = await h.connectHost(session.roomCode, session.hostToken);
+
+  const ghost = await h.connectStudent({
+    roomCode: "zzzz zzzz",
+    name: "Ghost",
+    address: studentAddress(90),
+  });
+  const badCode = await ghost.inbox.wait("join_rejected");
+  assert.equal(badCode.reason, "invalid_room_code");
+
+  const missing = await h.connectStudent({
+    roomCode: "cactus maple",
+    name: "Missing",
+    address: studentAddress(91),
+  });
+  const gone = await missing.inbox.wait("join_rejected");
+  assert.ok(["session_gone", "invalid_room_code"].includes(gone.reason), gone.reason);
+
+  const wrongToken = await h.connectHost(session.roomCode, "not-the-token");
+  const tokenRejected = await wrongToken.inbox.wait("join_rejected");
+  assert.equal(tokenRejected.reason, "bad_host_token");
+
+  closeClients(host, ghost, missing, wrongToken);
+}
+
+// A host console that lost the seat is told, instead of being ignored.
+async function scenarioStaleHostIsTold(h) {
+  const session = await h.createSession({ name: "stale host", questions: QUESTIONS });
+  const firstTab = await h.connectHost(session.roomCode, session.hostToken);
+  await sleep(50);
+  const secondTab = await h.connectHost(session.roomCode, session.hostToken);
+  await secondTab.inbox.wait("session_resumed");
+
+  firstTab.startQuiz();
+  const rejected = await firstTab.inbox.wait("host_command_rejected");
+  assert.equal(rejected.command, "host_start_quiz");
+  assert.equal(rejected.reason, "host_moved");
+  assert.equal(h.session(session.roomCode).status, "waiting");
+
+  closeClients(firstTab, secondTab);
+}
+
+// A quiz with a malformed question must be refused at creation, not blow up a room.
+async function scenarioMalformedQuizRefused(h) {
+  const res = await fetch(`${h.baseUrl}/sessions/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "roto", questions: [{ text: "sin opciones" }] }),
+  });
+  assert.equal(res.status, 400);
+  const body = await res.json();
+  assert.match(body.error, /options/);
+
+  const bad = await fetch(`${h.baseUrl}/sessions/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: "correct fuera de rango",
+      questions: [{ text: "q", options: ["a", "b"], correct: 7 }],
+    }),
+  });
+  assert.equal(bad.status, 400);
+}
+
+// A stale question index must not close a question that is not the open one.
+async function scenarioStaleIndexDoesNotCloseWrongQuestion(h) {
+  const session = await h.createSession({ name: "stale index", questions: QUESTIONS });
+  const host = await h.connectHost(session.roomCode, session.hostToken);
+  const [alice] = await h.connectStudents(session.roomCode, specs(1), host);
+
+  host.startQuiz();
+  host.openQuestion(0);
+  await alice.inbox.wait("question_opened", (p) => p.questionIndex === 0);
+  alice.answer({ questionIndex: 0, answerIndex: 0 });
+  await alice.inbox.wait("answer_ack");
+  await host.inbox.wait("question_stats");
+
+  host.openQuestion(1);
+  await alice.inbox.wait("question_opened", (p) => p.questionIndex === 1);
+
+  // Question 1 is open. Closing question 0 again must be refused.
+  host.showStats(0);
+  const rejected = await host.inbox.wait(
+    "host_command_rejected",
+    (p) => p.command === "host_show_stats"
+  );
+  assert.equal(rejected.reason, "not_the_open_question");
+  assert.equal(h.session(session.roomCode).status, "question_open");
+  assert.equal(h.session(session.roomCode).currentQuestion, 1);
+
+  // Reopening a question that is already scored is refused too.
+  host.openQuestion(0);
+  const reopen = await host.inbox.wait(
+    "host_command_rejected",
+    (p) => p.command === "host_open_question"
+  );
+  assert.equal(reopen.reason, "already_scored");
+
+  // Question 1 still closes normally.
+  alice.answer({ questionIndex: 1, answerIndex: 1 });
+  await alice.inbox.wait("answer_ack");
+  await host.inbox.wait("question_stats", (p) => p.questionIndex === 1);
+
+  closeClients(host, alice);
+}
+
+// A student whose seat moved gets an answer, instead of dead buttons.
+async function scenarioStudentAnswerAlwaysAnswered(h) {
+  const session = await h.createSession({ name: "student answers", questions: QUESTIONS });
+  const host = await h.connectHost(session.roomCode, session.hostToken);
+  const [alice] = await h.connectStudents(session.roomCode, specs(1), host);
+
+  host.startQuiz();
+  host.openQuestion(0);
+  await alice.inbox.wait("question_opened");
+
+  // The seat moves to a second socket for the same wallet; the old one is refused.
+  alice.disconnect();
+  await sleep(60);
+  const back = await h.connectStudent({
+    roomCode: session.roomCode,
+    name: alice.name,
+    address: alice.address,
+  });
+  await back.inbox.wait("session_resumed");
+  alice.socket.connect();
+  await sleep(120);
+  alice.socket.emit("student_answer", { questionIndex: 0, answerIndex: 0 });
+  const refused = await alice.inbox.wait("answer_rejected");
+  assert.ok(refused.reason, "the refusal must name a reason");
+
+  closeClients(host, alice, back);
+}
+
+// Abrir otra pregunta con una abierta dejaba la anterior sin puntuar para siempre.
+async function scenarioCannotAbandonOpenQuestion(h) {
+  const session = await h.createSession({ name: "no abandonar", questions: QUESTIONS });
+  const host = await h.connectHost(session.roomCode, session.hostToken);
+  const [alice] = await h.connectStudents(session.roomCode, specs(1), host);
+
+  host.startQuiz();
+  host.openQuestion(0);
+  await alice.inbox.wait("question_opened", (p) => p.questionIndex === 0);
+
+  host.openQuestion(1);
+  const rejected = await host.inbox.wait(
+    "host_command_rejected",
+    (p) => p.command === "host_open_question"
+  );
+  assert.equal(rejected.reason, "question_still_open");
+  assert.equal(h.session(session.roomCode).currentQuestion, 0);
+  assert.equal(h.session(session.roomCode).status, "question_open");
+
+  // La pregunta 0 se cierra normal y recién ahí se puede abrir la siguiente.
+  alice.answer({ questionIndex: 0, answerIndex: 0 });
+  await alice.inbox.wait("answer_ack");
+  await host.inbox.wait("question_stats", (p) => p.questionIndex === 0);
+  host.openQuestion(1);
+  await alice.inbox.wait("question_opened", (p) => p.questionIndex === 1);
+
+  closeClients(host, alice);
+}
+
 async function main() {
   const harness = await startHarness();
   const health = await fetch(`${harness.baseUrl}/health`);
@@ -432,6 +636,13 @@ async function main() {
     ["quiz end + distribute event", scenarioQuizEndAndDistribute],
     ["tie case (same QTKN + correctas)", scenarioTie],
     ["25 students smoke", scenarioTwentyFiveSmoke],
+    ["bad question index is refused, server survives", scenarioBadQuestionIndex],
+    ["every join gets an answer", scenarioJoinAlwaysAnswered],
+    ["stale host console is told, not ignored", scenarioStaleHostIsTold],
+    ["a malformed quiz is refused at creation", scenarioMalformedQuizRefused],
+    ["a stale index does not close the wrong question", scenarioStaleIndexDoesNotCloseWrongQuestion],
+    ["every student answer gets an answer", scenarioStudentAnswerAlwaysAnswered],
+    ["cannot abandon a question that is still open", scenarioCannotAbandonOpenQuestion],
   ];
 
   let passed = 0;

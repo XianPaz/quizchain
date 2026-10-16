@@ -125,4 +125,68 @@ function seed(code, playerCount) {
   store.delete(code);
 }
 
+// a question index outside the quiz never reaches the scoring or stats code
+{
+  const code = room("range");
+  seed(code, 1);
+  assert.strictEqual(store.hasQuestion(code, 0), true);
+  assert.strictEqual(store.hasQuestion(code, 5), false);
+  assert.strictEqual(store.hasQuestion(code, -1), false);
+  assert.strictEqual(store.hasQuestion(code, 1.5), false);
+  assert.strictEqual(store.hasQuestion(code, "0"), false);
+  assert.strictEqual(store.setCurrentQuestion(code, 5), null);
+  assert.strictEqual(store.getQuestionStats(code, 5), null);
+  assert.strictEqual(store.timeoutUnanswered(code, 5), null);
+  assert.doesNotThrow(() => store.calculateScores(code, 5));
+  store.delete(code);
+}
+
+// An index in range but a question with no options is not a usable question.
+{
+  const code = room("broken");
+  store.create(code, { name: "Test", questions: [{ text: "sin opciones" }] });
+  store.addPlayer(code, { address: "0x0", name: "P0" });
+  assert.strictEqual(store.hasQuestion(code, 0), false);
+  assert.strictEqual(store.getQuestionStats(code, 0), null);
+  assert.strictEqual(store.setCurrentQuestion(code, 0), null);
+  assert.doesNotThrow(() => store.calculateScores(code, 0));
+  store.delete(code);
+}
+
+// A refused index must not grow the answers map.
+{
+  const code = room("grow");
+  seed(code, 1);
+  const before = Object.keys(store.get(code).answers).length;
+  for (let i = 0; i < 5; i += 1) {
+    const result = store.recordAnswer(code, 900 + i, "0x0", 0);
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.reason, "wrong_question");
+  }
+  assert.strictEqual(Object.keys(store.get(code).answers).length, before);
+  store.delete(code);
+}
+
+// Las salas terminadas se liberan; las que están en juego, no.
+{
+  const viva = room("viva");
+  const vieja = room("vieja");
+  const reciente = room("reciente");
+  seed(viva, 1);
+  seed(vieja, 1);
+  seed(reciente, 1);
+  store.setStatus(vieja, "finished");
+  store.setStatus(reciente, "finished");
+  store.get(vieja).finishedAt = Date.now() - 10 * 60 * 60 * 1000;
+
+  const liberadas = store.sweepFinished(6 * 60 * 60 * 1000);
+  assert.ok(liberadas.includes(vieja), "la sala vieja tiene que liberarse");
+  assert.ok(!liberadas.includes(reciente), "la recién terminada todavía no");
+  assert.ok(!liberadas.includes(viva), "una sala en juego nunca se libera");
+  assert.strictEqual(store.get(vieja), null);
+  assert.ok(store.get(reciente));
+  assert.ok(store.get(viva));
+  store.delete(viva); store.delete(reciente);
+}
+
 console.log("sessionStore.test.js passed");

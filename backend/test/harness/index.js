@@ -18,6 +18,9 @@ const TRACKED_EVENTS = [
   "session_resumed",
   "session_cancelled",
   "redirect_lobby",
+  "join_rejected",
+  "join_accepted",
+  "host_command_rejected",
 ];
 
 function sleep(ms) {

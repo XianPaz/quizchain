@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const express = require("express");
 const router = express.Router();
 const store = require("../sessionStore");
+const { validateQuestions } = require("../../shared/gameContract");
 const {
   generateRoomCode,
   isValidRoomCode,
@@ -27,8 +28,9 @@ function hostCreatePayload(session) {
 
 router.post("/create", (req, res) => {
   const { roomCode, name, questions } = req.body;
-  if (!questions?.length) {
-    return res.status(400).json({ error: "questions are required" });
+  const valid = validateQuestions(questions);
+  if (!valid.ok) {
+    return res.status(400).json({ error: valid.error });
   }
 
   let code;
