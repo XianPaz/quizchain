@@ -3,6 +3,7 @@ import { useQuizSocket } from "../hooks/useQuizSocket";
 import { COLORS } from "../styles/colors";
 import { getRankEmoji, formatAddress } from "../utils/helpers";
 import { distributeRewards } from "../utils/blockchain";
+import { copy } from "../copy/es-AR.js";
 import HighlightsBanner from "../components/HighlightsBanner";
 
 function Leaderboard({ scores, players, quiz }) {
@@ -17,7 +18,7 @@ function Leaderboard({ scores, players, quiz }) {
   return (
     <div style={{ marginTop: 20 }}>
       <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.muted, marginBottom: 10 }}>
-        LEADERBOARD
+        {copy.game.leaderboard}
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {sorted.map((p, i) => (
@@ -31,7 +32,7 @@ function Leaderboard({ scores, players, quiz }) {
               {nicknameMap[p.address] || formatAddress(p.address)}
             </span>
             <span style={{ color: COLORS.muted, fontSize: 12 }}>
-              {p.correct}{quiz ? `/${quiz.questions.length}` : ""} correct
+              {quiz ? copy.host.correctOf(p.correct, quiz.questions.length) : `${p.correct}`}
               {p.streak >= 3 ? ` · 🔥${p.streak}` : ""}
             </span>
             <span style={{
@@ -210,18 +211,18 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
         background: COLORS.surface,
       }}>
         <span style={{ fontFamily: "Orbitron, sans-serif", fontSize: 14, color: COLORS.accent }}>
-          HOST CONSOLE
+          {copy.host.console}
         </span>
         <div style={{
           background: COLORS.card, border: `1px solid ${COLORS.border}`,
           borderRadius: 8, padding: "6px 14px", fontSize: 13, color: COLORS.muted,
         }}>
-          Room: <strong style={{ fontFamily: "JetBrains Mono, monospace", letterSpacing: 4, color: COLORS.accent }}>
+          {copy.host.room}: <strong style={{ fontFamily: "JetBrains Mono, monospace", letterSpacing: 4, color: COLORS.accent }}>
             {quiz.roomCode}
           </strong>
         </div>
         <span style={{ color: COLORS.muted, fontSize: 13 }}>
-          {players.length} student{players.length !== 1 ? "s" : ""} joined
+          {copy.host.joined(players.length)}
         </span>
       </div>
 
@@ -235,7 +236,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
               {quiz.name}
             </h2>
             <p style={{ color: COLORS.muted, marginBottom: 32 }}>
-              {quiz.questions.length} questions
+              {copy.host.questionsCount(quiz.questions.length)}
             </p>
 
             {/* Room code display */}
@@ -243,7 +244,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
             background: COLORS.card, border: `1px solid ${COLORS.border}`,
             borderRadius: 12, padding: "24px 40px", display: "inline-block", marginBottom: 16,
             }}>
-            <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 6 }}>SHARE THIS CODE</div>
+            <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 6 }}>{copy.host.shareCode}</div>
             <div style={{
                 fontFamily: "Orbitron, sans-serif", fontSize: 42, fontWeight: 900,
                 color: COLORS.accent, letterSpacing: 10,
@@ -254,14 +255,14 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
 
             {/* Waiting message — now below the box */}
             <p style={{ color: COLORS.muted, fontSize: 13, marginBottom: 32 }}>
-            Waiting for students to join...
+            {copy.host.waitingStudents}
             </p>
 
             {/* Player list */}
             {players.length > 0 && (
               <div style={{ marginBottom: 32 }}>
                 <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 10 }}>
-                  Students in lobby:
+                  {copy.host.studentsInLobby}
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
                   {players.map((p, i) => (
@@ -291,7 +292,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                 cursor: players.length === 0 ? "not-allowed" : "pointer",
                 fontFamily: "Space Grotesk, sans-serif",
               }}>
-              {players.length === 0 ? "Waiting for students..." : `▶ Start Quiz (${players.length} ready)`}
+              {players.length === 0 ? copy.host.startDisabled : copy.host.start(players.length)}
             </button>
           </div>
         )}
@@ -304,7 +305,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
               alignItems: "center", marginBottom: 16,
             }}>
               <div style={{ fontSize: 13, color: COLORS.muted }}>
-                Question {currentQ + 1} of {quiz.questions.length}
+                {copy.host.questionOf(currentQ + 1, quiz.questions.length)}
               </div>
               <div style={{
                 fontFamily: "Orbitron, sans-serif", fontSize: 28, fontWeight: 900,
@@ -356,7 +357,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                 {answerCount.answered} / {answerCount.total}
               </div>
               <div style={{ color: COLORS.muted, fontSize: 13, marginBottom: 12 }}>
-                students answered
+                {copy.host.answered}
               </div>
               <div style={{
                 height: 6, background: COLORS.border, borderRadius: 3, overflow: "hidden",
@@ -381,8 +382,8 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                 fontFamily: "Space Grotesk, sans-serif",
               }}>
               {allAnswered || timeRemaining === 0
-                ? "✓ Time's up — Show Results"
-                : "⏭ Close question now"}
+                ? copy.host.showResults
+                : copy.host.closeNow}
             </button>
           </div>
         )}
@@ -394,7 +395,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
               textAlign: "center", fontFamily: "Orbitron, sans-serif",
               fontSize: 20, marginBottom: 24, color: COLORS.accent,
             }}>
-              QUESTION {currentQ + 1} RESULTS
+              {copy.host.results(currentQ + 1)}
             </div>
 
             {/* Question description */}
@@ -446,7 +447,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                 textAlign: "center", marginTop: 16, fontSize: 14,
                 color: COLORS.accent, fontWeight: 700,
               }}>
-                {questionStats.correctCount} / {questionStats.totalPlayers} got it right
+                {copy.host.gotItRight(questionStats.correctCount, questionStats.totalPlayers)}
               </div>
             </div>
 
@@ -465,8 +466,8 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                 fontFamily: "Space Grotesk, sans-serif",
               }}>
               {currentQ + 1 < quiz.questions.length
-                ? `Next Question (${currentQ + 2}/${quiz.questions.length}) →`
-                : "🏁 End Quiz & Calculate Scores"}
+                ? copy.host.nextQuestion(currentQ + 2, quiz.questions.length)
+                : copy.host.endQuiz}
             </button>
           </div>
         )}
@@ -479,7 +480,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
               fontFamily: "Orbitron, sans-serif", fontSize: 24,
               marginBottom: 24, color: COLORS.accent,
             }}>
-              FINAL SCORES
+              {copy.host.finalScores}
             </h2>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 32 }}>
@@ -501,14 +502,14 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                       </div>
                     </div>
                     <span style={{ color: COLORS.muted, fontSize: 12 }}>
-                      {p.correct}/{quiz.questions.length} correct
+                      {copy.host.correctOf(p.correct, quiz.questions.length)}
                     </span>
                     <span style={{
                       background: `${COLORS.accent}22`, border: `1px solid ${COLORS.accent}44`,
                       borderRadius: 6, padding: "4px 10px",
                       fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: COLORS.accent,
                     }}>
-                      {p.totalPoints ?? 0} pts · ⬡ {p.totalTokens} QTKN
+                      ⬡ {p.totalQtkn ?? p.totalTokens ?? 0} QTKN
                     </span>
                   </div>
                 );
@@ -526,7 +527,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                 cursor: distributingPending ? "not-allowed" : "pointer",
                 fontFamily: "Space Grotesk, sans-serif", marginBottom: 12,
               }}>
-              {distributingPending ? "⏳ Waiting for MetaMask confirmation..." : "⬡ Distribute Rewards On-Chain"}
+              {distributingPending ? copy.host.distributing : copy.host.distribute}
             </button>
 
             {distributeError && (
@@ -548,7 +549,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                 fontSize: 14, cursor: "pointer",
                 fontFamily: "Space Grotesk, sans-serif",
               }}>
-              Back to Dashboard
+              {copy.host.backToDashboard}
             </button>
           </div>
         )}
@@ -558,10 +559,10 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
           <div style={{ textAlign: "center", paddingTop: 40 }}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>✅</div>
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, color: COLORS.accent }}>
-              Rewards Sent!
+              {copy.host.rewardsSent}
             </h2>
             <p style={{ color: COLORS.muted, marginTop: 8, marginBottom: 16 }}>
-              Tokens minted and sent to all students on Sepolia.
+              {copy.host.rewardsSentBody}
             </p>
             {txHash && (
               <a
@@ -575,7 +576,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                   fontFamily: "JetBrains Mono, monospace", fontSize: 11,
                   color: COLORS.accent, textDecoration: "none",
                 }}>
-                🔗 View on Etherscan
+                {copy.host.viewOnEtherscan}
               </a>
             )}
             <br />
@@ -587,7 +588,7 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                 fontSize: 15, fontWeight: 700, cursor: "pointer",
                 fontFamily: "Space Grotesk, sans-serif",
               }}>
-              ← Back to Dashboard
+              ← {copy.host.backToDashboard}
             </button>
           </div>
         )}
