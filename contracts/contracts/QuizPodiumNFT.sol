@@ -342,7 +342,7 @@ contract QuizPodiumNFT is ERC721, Ownable {
         }
 
         assembly {
-            mstore(buffer, n);
+            mstore(buffer, n)
         }
         return string(buffer);
     }
