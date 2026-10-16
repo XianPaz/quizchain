@@ -3,10 +3,8 @@
 const {
   qtknForPlace,
   awardQuestionQtkn,
-  rankPlayers,
-  withGaps,
-  applyQuestionScores,
-  emptyPlayerScore,
+  compareArrival,
+  ranksFromScores,
 } = require("../shared/gameContract");
 
 // Adapter over the shared game contract.
@@ -26,20 +24,13 @@ function scoreAnswers({ answers, correctIndex }) {
   return pointsByAddress;
 }
 
-function ranksFromScores(scores) {
-  return rankPlayers(scores).reduce((map, row) => {
-    map[row.address] = row.rank;
-    return map;
-  }, {});
-}
-
-function buildHighlights({ players, scores, answers, correctIndex, previousRanks }) {
+function buildHighlights({ players, scores, answers, correctIndex, previousRanks, currentRanks }) {
   const nickname = {};
   (players || []).forEach((p) => {
     nickname[p.address] = p.name;
   });
 
-  const currentRanks = ranksFromScores(scores);
+  const ranks = currentRanks || ranksFromScores(scores);
 
   let fastest = null;
   Object.entries(answers || {}).forEach(([address, data]) => {
@@ -65,7 +56,7 @@ function buildHighlights({ players, scores, answers, correctIndex, previousRanks
     }))
     .sort((a, b) => b.streak - a.streak);
 
-  const climbers = Object.entries(currentRanks)
+  const climbers = Object.entries(ranks)
     .map(([address, toRank]) => {
       const fromRank = previousRanks?.[address];
       if (!fromRank) return null;
@@ -82,7 +73,7 @@ function buildHighlights({ players, scores, answers, correctIndex, previousRanks
     .filter(Boolean)
     .sort((a, b) => b.delta - a.delta);
 
-  const podiumEntries = Object.entries(currentRanks)
+  const podiumEntries = Object.entries(ranks)
     .filter(([address, toRank]) => {
       if (toRank > 3) return false;
       const fromRank = previousRanks?.[address];
@@ -98,24 +89,11 @@ function buildHighlights({ players, scores, answers, correctIndex, previousRanks
   return { fastest, streaks, climbers, podiumEntries };
 }
 
-function compareArrival(a, b) {
-  if (a.arrivalSeq != null && b.arrivalSeq != null && a.arrivalSeq !== b.arrivalSeq) {
-    return a.arrivalSeq - b.arrivalSeq;
-  }
-  const aAt = a.receivedAt ?? a.answeredAt ?? Number.MAX_SAFE_INTEGER;
-  const bAt = b.receivedAt ?? b.answeredAt ?? Number.MAX_SAFE_INTEGER;
-  return aAt - bAt;
-}
-
 module.exports = {
   qtknForPlace,
   calcPlacementPoints: qtknForPlace,
   scoreAnswers,
   pointsToTokens: (qtkn) => Number(qtkn) || 0,
   ranksFromScores,
-  rankPlayers,
-  withGaps,
-  applyQuestionScores,
-  emptyPlayerScore,
   buildHighlights,
 };

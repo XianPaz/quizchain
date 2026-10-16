@@ -1,18 +1,11 @@
 "use strict";
 
 const { randomInt } = require("crypto");
+const { normalizeRoomCode } = require("../shared/gameContract");
 const WORDS = require("./wordlists/bip39-english.json");
 
 const WORD_SET = new Set(WORDS);
 const MAX_GENERATE_ATTEMPTS = 64;
-
-function normalizeRoomCode(input) {
-  return String(input ?? "")
-    .trim()
-    .replace(/-/g, " ")
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-}
 
 function isValidRoomCode(input) {
   const words = normalizeRoomCode(input).split(" ");

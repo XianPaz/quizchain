@@ -1,14 +1,13 @@
 const { scoreAnswers, ranksFromScores, buildHighlights } = require("./scoring");
-const { emptyPlayerScore, canAcceptAnswer, rankPlayers, withGaps } = require("../shared/gameContract");
+const {
+  emptyPlayerScore,
+  canAcceptAnswer,
+  rankPlayers,
+  withGaps,
+  normalizeAddress,
+} = require("../shared/gameContract");
 
 const sessions = {};
-
-function normalizeAddress(address) {
-  if (!address || typeof address !== "string") return null;
-  const trimmed = address.trim();
-  if (!trimmed || trimmed === "undefined") return null;
-  return trimmed.toLowerCase();
-}
 
 function emptyScore() {
   const score = emptyPlayerScore();
