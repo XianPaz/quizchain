@@ -1,6 +1,7 @@
 import WalletBar from "../components/WalletBar";
 import { styles } from "../styles/styles";
 import { COLORS } from "../styles/colors";
+import { copy } from "../copy/es-AR";
 import React from "react";
 
 export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectWallet, onDisconnect, walletError, minterError, connecting }) {
@@ -46,7 +47,7 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
             borderRadius: 999, padding: "6px 14px", marginBottom: 24,
           }}>
             <span style={{ color: COLORS.accent, fontSize: 12, fontWeight: 700, letterSpacing: 1 }}>
-              ⬡ POWERED BY SEPOLIA TESTNET
+              ⬡ {copy.landing.badge}
             </span>
           </div>
         </div>
@@ -56,14 +57,14 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
             fontFamily: "Orbitron", fontWeight: 900, fontSize: "clamp(40px, 7vw, 80px)",
             lineHeight: 1.1, marginBottom: 24, letterSpacing: "-1px",
           }}>
-            <span style={{ color: COLORS.text }}>QUIZ.</span>
+            <span style={{ color: COLORS.text }}>{copy.landing.hero1}</span>
             <br />
             <span style={{
               background: `linear-gradient(135deg, ${COLORS.accent}, ${COLORS.blue})`,
               WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent",
-            }}>COMPETE.</span>
+            }}>{copy.landing.hero2}</span>
             <br />
-            <span style={{ color: COLORS.text }}>EARN.</span>
+            <span style={{ color: COLORS.text }}>{copy.landing.hero3}</span>
           </h1>
         </div>
 
@@ -71,9 +72,7 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
           <p style={{
             color: COLORS.muted, fontSize: 18, maxWidth: 520, lineHeight: 1.6, marginBottom: 48,
           }}>
-            Real-time quiz battles where speed matters. Answer fast, earn more{" "}
-            <span style={{ color: COLORS.accent, fontWeight: 700 }}>QTKN tokens</span>{" "}
-            distributed directly to your wallet on Sepolia.
+            {copy.landing.subtitle}
           </p>
         </div>
 
@@ -85,10 +84,10 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center" }}>
             <button className="btn btn-primary btn-lg" onClick={onHostQuiz}
               style={{ fontSize: 16, letterSpacing: 1 }}>
-              🎯 Host a Quiz
+              🎯 {copy.landing.hostCta}
             </button>
             <button className="btn btn-secondary btn-lg" onClick={onJoinQuiz}>
-              👥 Join a Quiz
+              👥 {copy.landing.joinCta}
             </button>
           </div>
 
@@ -108,11 +107,7 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
           animationDelay: "0.5s", 
           display: "flex", gap: 40, marginTop: 80, flexWrap: "wrap", justifyContent: "center",
         }}>
-          {[
-            { label: "Base Reward", value: "10 QTKN", sub: "per correct answer" },
-            { label: "Speed Multiplier", value: "2×", sub: "instant answer" },
-            { label: "Participation Bonus", value: "5 QTKN", sub: "just for finishing" },
-          ].map((s) => (
+          {copy.landing.stats.map((s) => (
             <div key={s.label} style={{ textAlign: "center" }}>
               <div style={{ fontFamily: "Orbitron", fontSize: 28, fontWeight: 900, color: COLORS.accent }}>
                 {s.value}
@@ -128,12 +123,7 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
           display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
           gap: 16, marginTop: 80, maxWidth: 900, width: "100%",
         }}>
-          {[
-            { icon: "⚡", title: "Speed-Based Rewards", desc: "The faster you answer correctly, the more QTKN you earn. Instant answers get 2× multiplier." },
-            { icon: "🦊", title: "MetaMask Integration", desc: "Connect your wallet on Sepolia testnet. Tokens are minted directly to your address." },
-            { icon: "🎮", title: "Real-Time Gameplay", desc: "Compete live with a countdown timer. See the leaderboard update after every question." },
-            { icon: "📝", title: "Custom Quizzes", desc: "Hosts create quizzes with custom questions, time limits, and answer choices." },
-          ].map((f) => (
+          {copy.landing.features.map((f) => (
             <div key={f.title} className="card slide-up" style={{
               textAlign: "left", animationDelay: "0.6s", 
               border: `1px solid ${COLORS.border}`,
