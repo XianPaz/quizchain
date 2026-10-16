@@ -14,9 +14,4 @@ export const QUIZ_TOKEN_ABI = [
   "function removeMinter(address minter) external",
 ];
 
-export const REWARDS = {
-  QTKN_BY_PLACE: [21, 18, 16, 15, 14, 13, 12, 11, 10],
-  QTKN_FIRST: 21,
-  QTKN_FLOOR_CORRECT: 10,
-  QTKN_INCORRECT: 0,
-};
+// La tabla de QTKN vive en shared/gameContract.js. Se lee desde ./game/contract.
