@@ -1,6 +1,6 @@
 import { COLORS } from "../styles/colors";
 import { getRankEmoji, sameAddress } from "../utils/helpers";
-import { copy } from "../copy/es-AR";
+import { copy } from "../copy/es-AR.js";
 
 export default function HighlightsBanner({ highlights, myAddress }) {
   if (!highlights) return null;

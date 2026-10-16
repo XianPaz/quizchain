@@ -1,7 +1,7 @@
 import WalletBar from "../components/WalletBar";
 import { styles } from "../styles/styles";
 import { COLORS } from "../styles/colors";
-import { copy } from "../copy/es-AR";
+import { copy } from "../copy/es-AR.js";
 import React from "react";
 
 export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectWallet, onDisconnect, walletError, minterError, connecting }) {

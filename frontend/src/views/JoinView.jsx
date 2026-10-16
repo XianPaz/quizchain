@@ -3,7 +3,7 @@ import { COLORS } from "../styles/colors";
 import { useState } from "react";
 import { formatAddress } from "../utils/helpers";
 import { normalizeRoomCode } from "../api";
-import { copy } from "../copy/es-AR";
+import { copy } from "../copy/es-AR.js";
 
 export default function JoinView({ wallet, onJoin, onBack, onConnectWallet, activeSessions, walletError, connecting }) {
   const [code, setCode] = useState("");
