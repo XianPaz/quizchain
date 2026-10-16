@@ -5,7 +5,7 @@ import { formatAddress } from "../utils/helpers";
 import { normalizeRoomCode } from "../api";
 import { copy } from "../copy/es-AR.js";
 
-export default function JoinView({ wallet, onJoin, onBack, onConnectWallet, activeSessions, walletError, connecting }) {
+export default function JoinView({ wallet, onJoin, onBack, onConnectWallet, walletError, connecting }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [joining, setJoining] = useState(false);

@@ -4,7 +4,7 @@ import { COLORS } from "../styles/colors";
 import { copy } from "../copy/es-AR.js";
 import React from "react";
 
-export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectWallet, onDisconnect, walletError, minterError, connecting }) {
+export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectWallet, onDisconnect, walletError, minterError, sessionError, connecting }) {
   return (
     <div className="grid-bg noise" style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       <style>{styles}</style>
@@ -98,6 +98,16 @@ export default function LandingView({ onHostQuiz, onJoinQuiz, wallet, onConnectW
               color: COLORS.red, fontSize: 13, textAlign: "center",
             }}>
               ⚠️ {minterError}
+            </div>
+          )}
+
+          {sessionError && (
+            <div style={{
+              background: `${COLORS.red}11`, border: `1px solid ${COLORS.red}44`,
+              borderRadius: 8, padding: "10px 16px", maxWidth: 380, width: "100%",
+              color: COLORS.red, fontSize: 13, textAlign: "center",
+            }}>
+              ⚠️ {sessionError}
             </div>
           )}
         </div>
