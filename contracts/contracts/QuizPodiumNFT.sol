@@ -281,7 +281,7 @@ contract QuizPodiumNFT is ERC721, Ownable {
             "</text>",
             "<text x='300' y='452' text-anchor='middle' font-family='sans-serif' font-size='14' fill='#A09A8E'>",
             p.className,
-            "  ·  ",
+            unicode"  ·  ",
             p.date,
             "</text>",
             "<text x='300' y='552' text-anchor='middle' font-family='sans-serif' font-size='11' letter-spacing='6' fill='#A09A8E'>QUIZCHAIN</text>",
