@@ -9,9 +9,10 @@ function roomCodePath(roomCode) {
   return encodeURIComponent(normalizeRoomCode(roomCode).replace(/ /g, "-"));
 }
 
-export async function createSession(roomCode, name, questions, className) {
+export async function createSession(roomCode, name, questions, className, replaces) {
   const body = { name, questions };
   if (className) body.className = className;
+  if (replaces?.roomCode && replaces?.hostToken) body.replaces = replaces;
   if (roomCode) body.roomCode = roomCode;
   const res = await fetch(`${BASE}/sessions/create`, {
     method: "POST",

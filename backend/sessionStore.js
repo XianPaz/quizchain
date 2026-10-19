@@ -7,7 +7,22 @@ const {
   normalizeAddress,
 } = require("../shared/gameContract");
 
+const { EventEmitter } = require("events");
+
 const sessions = {};
+
+// Salas cerradas por el profe. Se recuerdan un rato para que, si crea otra,
+// los alumnos que quedaron en la vieja (o recargan con ese código) pasen a la nueva.
+// { code: { hostToken, movable, movedTo, closedAt } }
+const closed = {};
+const CLOSED_ROOM_TTL_MS = 3 * 60 * 60 * 1000;
+
+// Solo se mueve a los alumnos de una sala que no terminó: al que ya vio sus
+// resultados o recibió premios no se lo saca de esa pantalla.
+const MOVABLE_STATUSES = new Set(["waiting", "active", "question_open", "showing_stats"]);
+
+// La ruta HTTP también cierra salas y no tiene el socket: avisa por acá.
+const events = new EventEmitter();
 
 function emptyScore() {
   const score = emptyPlayerScore();
@@ -311,6 +326,48 @@ module.exports = {
     delete sessions[roomCode];
   },
 
+  events,
+
+  // El profe cierra la sala. Se avisa a quien siga conectado y queda registrada
+  // para poder mandar a sus alumnos a la próxima sala del mismo profe.
+  close(roomCode) {
+    const s = sessions[roomCode];
+    if (!s) return null;
+    this.calculateTokens(roomCode);
+    const scores = this.getScores(roomCode);
+    closed[roomCode] = {
+      hostToken: s.hostToken,
+      movable: MOVABLE_STATUSES.has(s.status),
+      movedTo: null,
+      closedAt: Date.now(),
+    };
+    delete sessions[roomCode];
+    events.emit("room_closed", roomCode, { scores });
+    return closed[roomCode];
+  },
+
+  // A dónde se fue la sala, si el profe abrió otra. null si no hay a dónde ir.
+  movedTo(roomCode) {
+    const entry = closed[roomCode];
+    if (!entry || !entry.movedTo) return null;
+    return sessions[entry.movedTo] ? entry.movedTo : null;
+  },
+
+  // La sala nueva reemplaza a la anterior del mismo profe. El token prueba que
+  // es el mismo profe: sin él cualquiera podría llevarse a los alumnos de otro.
+  replace(previousCode, hostToken, newCode) {
+    if (!previousCode || !hostToken || previousCode === newCode) return false;
+    if (sessions[previousCode]) {
+      if (sessions[previousCode].hostToken !== hostToken) return false;
+      this.close(previousCode);
+    }
+    const entry = closed[previousCode];
+    if (!entry || entry.hostToken !== hostToken || !entry.movable || entry.movedTo) return false;
+    entry.movedTo = newCode;
+    events.emit("room_moved", previousCode, newCode);
+    return true;
+  },
+
   // Libera las salas terminadas o canceladas que ya pasaron su tiempo de vida.
   // Devuelve los códigos liberados, para que quien llame limpie sus timers.
   sweepFinished(ttlMs, now = Date.now()) {
@@ -321,6 +378,9 @@ module.exports = {
       if (now - since < ttlMs) return;
       delete sessions[code];
       removed.push(code);
+    });
+    Object.entries(closed).forEach(([code, entry]) => {
+      if (now - entry.closedAt >= CLOSED_ROOM_TTL_MS) delete closed[code];
     });
     return removed;
   },

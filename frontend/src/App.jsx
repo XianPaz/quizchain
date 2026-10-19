@@ -7,9 +7,11 @@ import HostGame    from "./views/HostGame";
 import StudentGame from "./views/StudentGame";
 import RejoinView from "./views/RejoinView";
 import { isMinter } from "./utils/blockchain";
-import { loadSession, saveSession, clearSession } from "./hooks/useSessionPersistence";
+import {
+  loadSession, saveSession, clearSession, saveLastHosted, loadLastHosted,
+} from "./hooks/useSessionPersistence";
 
-import { createSession, validateSession, normalizeRoomCode } from "./api";
+import { createSession, validateSession, deleteSession, normalizeRoomCode } from "./api";
 import socket from "./socket";
 
 // Solo estos motivos significan que el lugar en la sala se perdió de verdad.
@@ -27,6 +29,7 @@ const MENSAJE_RECHAZO = {
   invalid_room_code: "Ese código de sala no existe. Son dos palabras.",
   session_gone: "La sala se cerró.",
   bad_host_token: "Esta sala ya no reconoce tu sesión de profe.",
+  room_moved: "El profe abrió otra sala.",
 };
 
 function joinErrorMessage(reason) {
@@ -47,6 +50,9 @@ export default function App() {
   const [joinPlayers, setJoinPlayers] = useState([]);
   const resumeAttempted = useRef(false);
   const joinPayloadRef = useRef(null);
+  // Los handlers del socket se registran una vez y leen de acá la versión actual.
+  const followTeacherRef = useRef(() => {});
+  const joinQuizRef = useRef(async () => ({ error: "not ready" }));
 
   useEffect(() => {
     const onConnect = () => {
@@ -61,6 +67,21 @@ export default function App() {
     if (socket.connected) socket.emit("join_room", payload);
     else socket.connect();
   };
+
+  // El profe cerró la sala del alumno y abrió otra: el alumno pasa solo, con el
+  // mismo apodo. Llega en vivo (room_moved) o al reconectar con el código viejo.
+  useEffect(() => {
+    const onMoved = ({ roomCode } = {}) => followTeacherRef.current(roomCode);
+    const onRejected = ({ reason, roomCode } = {}) => {
+      if (reason === "room_moved") followTeacherRef.current(roomCode);
+    };
+    socket.on("room_moved", onMoved);
+    socket.on("join_rejected", onRejected);
+    return () => {
+      socket.off("room_moved", onMoved);
+      socket.off("join_rejected", onRejected);
+    };
+  }, []);
 
   useEffect(() => {
     if (resumeAttempted.current) return;
@@ -87,6 +108,14 @@ export default function App() {
           }
           setSavedSession(saved);
           setView("rejoin");
+          return;
+        }
+
+        if (result.movedTo) {
+          setNickname(saved.nickname || "");
+          joinQuizRef.current(result.movedTo, saved.nickname).then((outcome) => {
+            if (outcome?.error) clearSession();
+          });
           return;
         }
 
@@ -160,7 +189,9 @@ export default function App() {
   };
 
   const handleStartQuiz = async (quizData) => {
-    const result = await createSession(undefined, quizData.name, quizData.questions, quizData.className);
+    const result = await createSession(
+      undefined, quizData.name, quizData.questions, quizData.className, loadLastHosted()
+    );
 
     if (!result.success) {
       alert("No se pudo crear la sala: " + result.error);
@@ -169,6 +200,7 @@ export default function App() {
 
     const roomCode = result.session.roomCode;
     const hostToken = result.session.hostToken;
+    saveLastHosted({ roomCode, hostToken });
     // Lo que el servidor fija para la medalla NFT. Se guarda con el quiz para
     // que siga estando si el profe recarga antes de entregarlas.
     const { sessionId, className, date } = result.session;
@@ -189,10 +221,14 @@ export default function App() {
     setView("game");
   };
 
-  const handleJoinQuiz = async (code, nickname) => {
+  const handleJoinQuiz = async (code, nickname, followed = false) => {
     const trimmed = normalizeRoomCode(code);
     const result = await validateSession(trimmed);
 
+    // Código de una sala que el profe reemplazó: se entra directo a la nueva.
+    if (!result.success && result.movedTo && !followed) {
+      return handleJoinQuiz(result.movedTo, nickname, true);
+    }
     if (!result.success) return { error: result.error };
 
     const roomCode = result.session.roomCode;
@@ -291,7 +327,25 @@ export default function App() {
     setView("game");
   };
 
+  useEffect(() => {
+    joinQuizRef.current = handleJoinQuiz;
+    followTeacherRef.current = (roomCode) => {
+      const current = joinPayloadRef.current;
+      if (!roomCode || current?.role !== "student") return;
+      if (normalizeRoomCode(roomCode) === current.roomCode) return;
+      const name = nickname || loadSession()?.nickname || "";
+      handleJoinQuiz(roomCode, name).then((outcome) => {
+        if (outcome?.error) console.warn("No se pudo pasar a la sala nueva:", outcome.error);
+      });
+    };
+  });
+
   const handleLeaveSession = () => {
+    // Si el profe sale, la sala se cierra de verdad. Antes quedaba abierta y los
+    // alumnos esperaban en un lobby que nadie iba a arrancar.
+    if (savedSession?.role === "host") {
+      deleteSession(savedSession.roomCode, savedSession.hostToken).catch(() => {});
+    }
     joinPayloadRef.current = null;
     clearSession();
     setSavedSession(null);
@@ -312,6 +366,7 @@ export default function App() {
 
     return (
       <StudentGame
+        key={activeQuiz.roomCode}
         quiz={activeQuiz}
         wallet={wallet}
         nickname={nickname}

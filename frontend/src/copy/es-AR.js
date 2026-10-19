@@ -170,6 +170,8 @@ export const copy = {
     studentsInLobby: "Alumnos en la sala:",
     startDisabled: "Esperando alumnos…",
     start: (n) => `▶ Arrancar el quiz (${n} listos)`,
+    cancelRoom: "✕ Cancelar la sala",
+    cancelRoomConfirm: "¿Cancelar la sala? Si después abrís otra, los alumnos pasan solos a la nueva.",
     questionOf: (n, total) => `Pregunta ${n} de ${total}`,
     answered: "alumnos contestaron",
     showResults: "✓ Se acabó el tiempo — Ver resultados",

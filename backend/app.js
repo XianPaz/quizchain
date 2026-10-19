@@ -64,6 +64,18 @@ function attachSocketHandlers(io) {
   }, SWEEP_EVERY_MS);
   sweep.unref?.();
 
+  // Cierres y mudanzas pueden venir de la ruta HTTP, que no tiene el socket.
+  const onRoomClosed = (code, { scores }) => {
+    clearQuestionTimer(code);
+    io.to(code).emit("session_cancelled", { scores });
+  };
+  const onRoomMoved = (code, roomCode) => {
+    io.to(code).emit("room_moved", { roomCode });
+    console.log(`Room ${code} moved to ${roomCode}`);
+  };
+  store.events.on("room_closed", onRoomClosed);
+  store.events.on("room_moved", onRoomMoved);
+
   function clearQuestionTimer(roomCode) {
     if (questionTimers[roomCode]) {
       clearTimeout(questionTimers[roomCode]);
@@ -199,6 +211,12 @@ function attachSocketHandlers(io) {
       }
       const session = store.get(code);
       if (!session) {
+        // El profe cerró esta sala y abrió otra: el alumno sigue al profe.
+        const movedTo = role === "host" ? null : store.movedTo(code);
+        if (movedTo) {
+          socket.emit("join_rejected", { reason: "room_moved", roomCode: movedTo });
+          return;
+        }
         socket.emit("join_rejected", { reason: "session_gone" });
         return;
       }
@@ -408,11 +426,7 @@ function attachSocketHandlers(io) {
     on("host_end_without_distribute", () => {
       const ctx = requireHost(socket, "host_end_without_distribute");
       if (!ctx) return;
-      clearQuestionTimer(ctx.code);
-      store.calculateTokens(ctx.code);
-      const scores = store.getScores(ctx.code);
-      io.to(ctx.code).emit("session_cancelled", { scores });
-      store.delete(ctx.code);
+      store.close(ctx.code);
     });
 
     on("host_distribute", ({ txHash }) => {
