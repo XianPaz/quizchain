@@ -229,6 +229,8 @@ async function scenarioReconnectMidQuestion(h) {
   const resumedAfter = alice.inbox.last("session_resumed");
   assert.equal(resumedAfter.status, "question_open");
   assert.equal(resumedAfter.alreadyAnswered, true);
+  assert.equal(resumedAfter.myAnswer, 0);
+  assert.equal(resumed.myAnswer, null);
 
   bob.answer({ questionIndex: 0, answerIndex: 1, speedScore: 40 });
   await host.inbox.wait("all_answered", (p) => p.questionIndex === 0);
@@ -484,6 +486,24 @@ async function scenarioJoinAlwaysAnswered(h) {
   closeClients(host, ghost, missing, wrongToken);
 }
 
+// The student screen mounts after join_accepted, so the player_joined of its own
+// join is gone by then. The last one in only had addresses, no nicknames.
+async function scenarioLastJoinerGetsNicknames(h) {
+  const session = await h.createSession({ name: "nicknames", questions: QUESTIONS });
+  const host = await h.connectHost(session.roomCode, session.hostToken);
+  const students = await h.connectStudents(session.roomCode, specs(3, "N"), host);
+
+  const last = students[students.length - 1];
+  const accepted = await last.inbox.wait("join_accepted");
+  assert.ok(Array.isArray(accepted.players), "join_accepted without players");
+  assert.deepEqual(
+    accepted.players.map((p) => p.name).sort(),
+    students.map((s) => s.name).sort()
+  );
+
+  closeClients(host, students);
+}
+
 // A host console that lost the seat is told, instead of being ignored.
 async function scenarioStaleHostIsTold(h) {
   const session = await h.createSession({ name: "stale host", questions: QUESTIONS });
@@ -638,6 +658,7 @@ async function main() {
     ["25 students smoke", scenarioTwentyFiveSmoke],
     ["bad question index is refused, server survives", scenarioBadQuestionIndex],
     ["every join gets an answer", scenarioJoinAlwaysAnswered],
+    ["the last student in gets the nicknames", scenarioLastJoinerGetsNicknames],
     ["stale host console is told, not ignored", scenarioStaleHostIsTold],
     ["a malformed quiz is refused at creation", scenarioMalformedQuizRefused],
     ["a stale index does not close the wrong question", scenarioStaleIndexDoesNotCloseWrongQuestion],

@@ -10,7 +10,7 @@ import HighlightsBanner from "../components/HighlightsBanner";
 import Leaderboard from "../components/Leaderboard";
 import { rankedScores } from "../utils/ranking";
 
-export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlayAgain, onGameEnd }) {
+export default function StudentGame({ quiz, wallet, nickname, initialPlayers, resumeData, onPlayAgain, onGameEnd }) {
   const [phase, setPhase] = useState("lobby_wait");
   // lobby_wait | answering | answer_wait | viewing_stats | finished | claiming | claimed
   const [currentQ, setCurrentQ] = useState(0);
@@ -21,7 +21,9 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
   const [allScores, setAllScores] = useState({});
   const myAddress = normalizeAddress(wallet?.address);
   const myScore = (myAddress && allScores[myAddress]) || null;
-  const [players, setPlayers] = useState([]);
+  // Llega con join_accepted: el player_joined de la propia entrada se emite
+  // antes de que esta pantalla escuche, y el último en entrar veía direcciones.
+  const [players, setPlayers] = useState(initialPlayers || []);
   const [balance, setBalance] = useState(null);
   const [highlights, setHighlights] = useState(null);
   const pendingRef = useRef(false);
@@ -44,10 +46,11 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
     if (!data) return;
     const {
       status, currentQuestion, scores, players, alreadyAnswered,
-      questionStats, remainingTime, highlights,
+      questionStats, remainingTime, highlights, myAnswer,
     } = data;
 
     setPlayers(players || []);
+    setSelectedAnswer(myAnswer ?? null);
     setAllScores(scores || {});
     setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
     if (highlights) setHighlights(highlights);
@@ -360,6 +363,8 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 const pct = questionStats.totalPlayers > 0
                   ? Math.round((d.count / questionStats.totalPlayers) * 100) : 0;
                 const isCorrect = i === questionStats.correctIndex;
+                const isMine = i === selectedAnswer;
+                const mineColor = isCorrect ? COLORS.accent : COLORS.red;
                 return (
                   <div key={i} style={{ marginBottom: 12 }}>
                     <div style={{
@@ -369,6 +374,15 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                       <span style={{ color: isCorrect ? COLORS.accent : COLORS.text }}>
                         {["A", "B", "C", "D", "E", "F"][i]}. {quiz.questions[currentQ].options[i]}
                         {isCorrect && " ✓"}
+                        {isMine && (
+                          <span style={{
+                            marginLeft: 8, padding: "1px 6px", borderRadius: 4,
+                            fontSize: 11, fontWeight: 700, color: mineColor,
+                            background: `${mineColor}22`, border: `1px solid ${mineColor}55`,
+                          }}>
+                            {copy.game.yourAnswer}
+                          </span>
+                        )}
                       </span>
                       <span style={{ color: COLORS.muted }}>{d.count} ({pct}%)</span>
                     </div>

@@ -119,6 +119,7 @@ export const copy = {
     connectedTo: "Conectado a la sala",
     questionOf: (n, total) => `Pregunta ${n} de ${total}`,
     answerSent: "¡Respuesta enviada!",
+    yourAnswer: "Tu respuesta",
     waitingAllAnswers: "Esperando que contesten todos…",
     results: (n) => `RESULTADO DE LA PREGUNTA ${n}`,
     placeToAnswer: (place) => `${place} en acertar`,
