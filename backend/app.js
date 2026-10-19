@@ -228,6 +228,7 @@ function attachSocketHandlers(io) {
           openedAt: session.questionOpenedAt,
           deadline: session.questionDeadline,
           txHash: session.txHash || null,
+          podium: session.podium || null,
           highlights: store.getHighlights(code),
           questionStats: session.status === "showing_stats"
             ? {
@@ -271,6 +272,7 @@ function attachSocketHandlers(io) {
           openedAt: session.questionOpenedAt,
           deadline: session.questionDeadline,
           highlights: store.getHighlights(code),
+          podium: session.podium || null,
         };
 
         if (session.status === "showing_stats") {
@@ -422,6 +424,37 @@ function attachSocketHandlers(io) {
       const scores = store.getScores(ctx.code);
       io.to(ctx.code).emit("rewards_distributed", { scores });
       console.log(`Rewards distributed in room ${ctx.code}`);
+    });
+
+    // El profe ya minteó las medallas desde su wallet; acá solo se registra qué
+    // token le tocó a cada alumno para que lo vea y lo pueda agregar a MetaMask.
+    on("host_podium_minted", ({ txHash, tokens } = {}) => {
+      const ctx = requireHost(socket, "host_podium_minted");
+      if (!ctx) return;
+      if (ctx.session.status !== "distributing") {
+        rejectHostCommand(socket, "host_podium_minted", "not_distributed");
+        return;
+      }
+      const clean = Array.isArray(tokens)
+        ? tokens.map((t) => ({
+            address: store.normalizeAddress(t?.address),
+            tokenId: String(t?.tokenId ?? ""),
+            rank: Number(t?.rank),
+          }))
+        : [];
+      const valid = clean.length > 0 && clean.every((t) =>
+        t.address
+        && store.findPlayer(ctx.code, t.address)
+        && /^[1-9][0-9]*$/.test(t.tokenId)
+        && [1, 2, 3].includes(t.rank)
+      );
+      if (!valid || typeof txHash !== "string") {
+        rejectHostCommand(socket, "host_podium_minted", "bad_payload");
+        return;
+      }
+      ctx.session.podium = { txHash, tokens: clean };
+      io.to(ctx.code).emit("podium_minted", ctx.session.podium);
+      console.log(`Podium NFTs minted in room ${ctx.code}`);
     });
 
     on("play_again", () => {

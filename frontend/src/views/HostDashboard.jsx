@@ -9,6 +9,7 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
   const [tab, setTab] = useState("upload");
   const [questions, setQuestions] = useState([]);
   const [quizName, setQuizName] = useState("");
+  const [className, setClassName] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -220,6 +221,21 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
                   </div>
                 </div>
               </div>
+              <label style={{ display: "block", marginTop: 16 }}>
+                <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 4 }}>
+                  {copy.hostDashboard.className}
+                </div>
+                <input
+                  className="input"
+                  value={className}
+                  maxLength={40}
+                  placeholder={copy.hostDashboard.classNamePlaceholder}
+                  onChange={(e) => setClassName(e.target.value)}
+                />
+                <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 4 }}>
+                  {copy.hostDashboard.classNameHint}
+                </div>
+              </label>
             </div>
 
             {/* Question list */}
@@ -278,7 +294,7 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
               <button
                 className="btn btn-primary"
                 style={{ flex: 2, fontSize: 16 }}
-                onClick={() => onStartQuiz({ name: quizName, questions })}>
+                onClick={() => onStartQuiz({ name: quizName, questions, className: className.trim() })}>
                 🚀 {copy.hostDashboard.launch}
               </button>
             </div>

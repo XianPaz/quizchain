@@ -214,6 +214,15 @@ Create a Google Sheet following this structure and export as **File → Download
 - `addMinter(address)` — owner adds a professor as minter
 - `removeMinter(address)` — owner removes a minter
 
+### QuizPodiumNFT.sol
+- ERC-721 **soulbound** (no transferible): medalla de Oro, Plata o Bronce para el podio de cada sesión
+- Metadata e imagen SVG generadas on-chain
+- Una medalla por alumno y sesión (`sessionId`); con empates puede haber más de un oro
+- `mintPodiumBatch(address[], PodiumInput[])` — el profe entrega todas las medallas en una transacción
+- `addMinter(address)` / `removeMinter(address)` — igual que QuizToken
+
+Es opcional: si `VITE_PODIUM_NFT_ADDRESS` no está configurada, la app no ofrece medallas.
+
 ### Deployment order
 
 ```bash
@@ -222,7 +231,18 @@ npx hardhat run scripts/deploy.js --network sepolia
 
 # 2. Add other professors as minters
 npx hardhat run scripts/addMinters.js --network sepolia
+
+# 3. Deploy QuizPodiumNFT (la cuenta que deploya queda como minter;
+#    otros profes: PODIUM_MINTERS=0x...,0x... en contracts/.env)
+npx hardhat run scripts/deployPodium.js --network sepolia
+# → copiar la dirección a VITE_PODIUM_NFT_ADDRESS en frontend/.env y en Netlify
 ```
+
+### Ver la medalla en MetaMask
+
+MetaMask no detecta NFTs solo en Sepolia. Al terminar, el alumno del podio ve el botón
+**"Agregar a MetaMask"**, que la agrega con un clic. A mano: MetaMask → red Sepolia →
+pestaña **NFTs** → **Importar NFT** → dirección del contrato e ID del token.
 
 ---
 

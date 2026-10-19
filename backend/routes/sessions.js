@@ -26,11 +26,34 @@ function hostCreatePayload(session) {
   };
 }
 
+const CLASS_NAME_MAX = 40;
+
+// La clase termina escrita on-chain en el NFT de podio, que no se puede re-mintear:
+// se recorta acá y se rechaza lo que el contrato rechazaría.
+function parseClassName(raw) {
+  if (raw === undefined || raw === null) return { ok: true, value: "" };
+  if (typeof raw !== "string") return { ok: false };
+  const value = raw.trim();
+  if (value.length > CLASS_NAME_MAX || /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(value)) {
+    return { ok: false };
+  }
+  return { ok: true, value };
+}
+
+function localDate(now = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
 router.post("/create", (req, res) => {
   const { roomCode, name, questions } = req.body;
   const valid = validateQuestions(questions);
   if (!valid.ok) {
     return res.status(400).json({ error: valid.error });
+  }
+  const className = parseClassName(req.body.className);
+  if (!className.ok) {
+    return res.status(400).json({ error: "Invalid class name" });
   }
 
   let code;
@@ -51,7 +74,13 @@ router.post("/create", (req, res) => {
   }
 
   const hostToken = crypto.randomBytes(32).toString("hex");
-  const session = store.create(code, { name, questions, hostToken });
+  // El código de sala se reusa con el tiempo; el sessionId no, y es la clave
+  // que usa el contrato para no dar dos medallas del mismo quiz.
+  const date = localDate();
+  const sessionId = `${date}-${code.replace(/ /g, "-")}-${crypto.randomBytes(3).toString("hex")}`;
+  const session = store.create(code, {
+    name, questions, hostToken, className: className.value, date, sessionId,
+  });
   res.json({ success: true, session: hostCreatePayload(session) });
 });
 

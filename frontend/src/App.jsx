@@ -160,7 +160,7 @@ export default function App() {
   };
 
   const handleStartQuiz = async (quizData) => {
-    const result = await createSession(undefined, quizData.name, quizData.questions);
+    const result = await createSession(undefined, quizData.name, quizData.questions, quizData.className);
 
     if (!result.success) {
       alert("No se pudo crear la sala: " + result.error);
@@ -169,18 +169,22 @@ export default function App() {
 
     const roomCode = result.session.roomCode;
     const hostToken = result.session.hostToken;
+    // Lo que el servidor fija para la medalla NFT. Se guarda con el quiz para
+    // que siga estando si el profe recarga antes de entregarlas.
+    const { sessionId, className, date } = result.session;
+    const sessionQuiz = { ...quizData, sessionId, className, date };
 
     joinRoom({ roomCode, role: "host", hostToken });
 
     saveSession({
       roomCode,
-      quizData,
+      quizData: sessionQuiz,
       role: "host",
       walletAddress: wallet?.address,
       hostToken,
     });
-        
-    setActiveQuiz({ ...quizData, roomCode });
+
+    setActiveQuiz({ ...sessionQuiz, roomCode });
     setRole("host");
     setView("game");
   };

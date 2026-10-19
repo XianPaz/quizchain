@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "node src/utils/parseQuizCSV.test.js"
+    "test": "node src/utils/parseQuizCSV.test.js && node src/utils/podium.test.js"
   },
   "dependencies": {
     "ethers": "^6.16.0",

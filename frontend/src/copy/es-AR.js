@@ -71,6 +71,9 @@ export const copy = {
     csvOnly: "Subí un archivo .csv. En Google Sheets: Archivo → Descargar → CSV.",
     quizName: "NOMBRE DEL QUIZ",
     questions: "PREGUNTAS",
+    className: "CLASE (OPCIONAL)",
+    classNamePlaceholder: "Ej. 6to A",
+    classNameHint: "Aparece en la medalla NFT del podio. Si la dejás vacía, se usa el nombre del quiz.",
     uploadOther: "Subir otro archivo",
     launch: "Abrir la sala",
   },
@@ -143,7 +146,18 @@ export const copy = {
     sentTo: (address) => `Enviado a ${address} en Sepolia`,
     viewOnEtherscan: "🔗 Ver en Etherscan",
     playAgain: "Jugar de nuevo",
+    medalTitle: (medal) => `¡Ganaste la medalla de ${medal}!`,
+    medalBody: "Es un NFT de podio a tu nombre en Sepolia. No se puede transferir.",
+    medalWaiting: "Estás en el podio: el profe te va a entregar una medalla NFT.",
+    addToMetaMask: "🦊 Agregar a MetaMask",
+    addedToMetaMask: "✓ Agregada a MetaMask",
+    addToMetaMaskFailed: "MetaMask no la pudo agregar. Importala a mano con el contrato y el ID.",
+    medalToken: (id) => `Token #${id}`,
+    viewMedal: "🔗 Ver la medalla en Etherscan",
   },
+
+  // Nombre de cada puesto del podio, igual que en el contrato.
+  medals: { 1: "Oro", 2: "Plata", 3: "Bronce" },
 
   // Consola del profe.
   host: {
@@ -171,6 +185,10 @@ export const copy = {
     rewardsSent: "¡Premios enviados!",
     rewardsSentBody: "Los tokens se enviaron a todos los alumnos en Sepolia.",
     viewOnEtherscan: "🔗 Ver en Etherscan",
+    mintMedals: (n) => `🏅 Entregar ${n} ${n === 1 ? "medalla" : "medallas"} NFT del podio`,
+    mintingMedals: "⏳ Esperando que confirmes las medallas en MetaMask…",
+    medalsSent: "🏅 Medallas entregadas",
+    viewMedalsTx: "🔗 Ver las medallas en Etherscan",
     backToDashboard: "Volver al panel",
     // El servidor rechazó un comando. La consola no puede seguir sola.
     rejected: {
@@ -182,6 +200,8 @@ export const copy = {
       question_still_open: "Todavía hay una pregunta abierta. Cerrala antes de seguir.",
       not_the_open_question: "Esa no es la pregunta que está abierta ahora.",
       bad_host_token: "Esta sala ya no reconoce tu sesión de profe. Volvé a crearla.",
+      not_distributed: "Primero repartí los QTKN, después las medallas.",
+      bad_payload: "El servidor no reconoció las medallas minteadas.",
       default: "El servidor no aceptó la acción. Probá de nuevo.",
     },
   },

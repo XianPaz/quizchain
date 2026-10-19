@@ -92,6 +92,9 @@ module.exports = {
     return {
       roomCode: session.roomCode,
       name: session.name,
+      sessionId: session.sessionId,
+      className: session.className || "",
+      date: session.date,
       status: session.status,
       currentQuestion: session.currentQuestion,
       questions: (session.questions || []).map((q) => ({

@@ -3,7 +3,9 @@ import { useQuizSocket } from "../hooks/useQuizSocket";
 import { useDeadlineTimer } from "../hooks/useDeadlineTimer";
 import { COLORS } from "../styles/colors";
 import { getRankEmoji, formatAddress } from "../utils/helpers";
-import { distributeRewards } from "../utils/blockchain";
+import { distributeRewards, mintPodiumNfts } from "../utils/blockchain";
+import { buildPodiumMint } from "../utils/podium";
+import { CONTRACTS } from "../config";
 import { copy } from "../copy/es-AR.js";
 import HighlightsBanner from "../components/HighlightsBanner";
 import Leaderboard from "../components/Leaderboard";
@@ -21,6 +23,9 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
   const [distributingPending, setDistributingPending] = useState(false);
   const [txHash, setTxHash] = useState(null);
   const [distributeError, setDistributeError] = useState("");
+  const [podium, setPodium] = useState(null);
+  const [mintingMedals, setMintingMedals] = useState(false);
+  const [medalsError, setMedalsError] = useState("");
   const [highlights, setHighlights] = useState(null);
   const [commandError, setCommandError] = useState("");
   const { timeRemaining, arm: armDeadlineTimer, stop: clearTimer } = useDeadlineTimer();
@@ -86,12 +91,15 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
     },
     
     rewards_distributed: () => setPhase("distributing"),
+
+    podium_minted: (data) => setPodium(data),
   });
 
   // Reused by the resume prop and by session_resumed after a socket reconnect.
   const applyResume = (data) => {
     if (!data) return;
-    const { status, currentQuestion, scores, players, questionStats, answeredCount, txHash, remainingTime, highlights } = data;
+    const { status, currentQuestion, scores, players, questionStats, answeredCount, txHash, remainingTime, highlights, podium } = data;
+    if (podium) setPodium(podium);
 
     const roster = players || [];
     setPlayers(roster);
@@ -167,6 +175,27 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
       setDistributeError(err.message || "Transaction failed");
     } finally {
       setDistributingPending(false);
+    }
+  };
+
+  // Sin contrato configurado, o sin sessionId (sala creada antes de esta versión),
+  // no se ofrece: la transacción fallaría igual.
+  const podiumMint = CONTRACTS.PODIUM_NFT && quiz.sessionId
+    ? buildPodiumMint({ scores, players, quiz })
+    : null;
+  const canMintMedals = !!podiumMint && podiumMint.recipients.length > 0 && !podium;
+
+  const mintMedals = async () => {
+    setMedalsError("");
+    setMintingMedals(true);
+    try {
+      const { hash, tokens } = await mintPodiumNfts(podiumMint);
+      emit("host_podium_minted", { txHash: hash, tokens });
+      setPodium({ txHash: hash, tokens });
+    } catch (err) {
+      setMedalsError(err.shortMessage || err.message || "Transaction failed");
+    } finally {
+      setMintingMedals(false);
     }
   };
 
@@ -560,6 +589,51 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
                 }}>
                 {copy.host.viewOnEtherscan}
               </a>
+            )}
+
+            {canMintMedals && (
+              <div style={{ maxWidth: 420, margin: "0 auto 16px" }}>
+                <button
+                  onClick={mintMedals}
+                  disabled={mintingMedals}
+                  style={{
+                    width: "100%", background: mintingMedals ? COLORS.border : COLORS.yellow,
+                    color: mintingMedals ? COLORS.muted : "#000",
+                    border: "none", borderRadius: 10, padding: "14px",
+                    fontSize: 15, fontWeight: 700,
+                    cursor: mintingMedals ? "not-allowed" : "pointer",
+                    fontFamily: "Space Grotesk, sans-serif",
+                  }}>
+                  {mintingMedals ? copy.host.mintingMedals : copy.host.mintMedals(podiumMint.recipients.length)}
+                </button>
+                {medalsError && (
+                  <div style={{
+                    background: `${COLORS.red}11`, border: `1px solid ${COLORS.red}44`,
+                    borderRadius: 8, padding: "10px 14px", marginTop: 12,
+                    color: COLORS.red, fontSize: 13, textAlign: "left",
+                  }}>
+                    ⚠️ {medalsError}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {podium && (
+              <div style={{ marginBottom: 24 }}>
+                <div style={{ color: COLORS.yellow, fontWeight: 700, marginBottom: 8 }}>
+                  {copy.host.medalsSent}
+                </div>
+                <a
+                  href={`https://sepolia.etherscan.io/tx/${podium.txHash}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontFamily: "JetBrains Mono, monospace", fontSize: 11,
+                    color: COLORS.yellow, textDecoration: "none",
+                  }}>
+                  {copy.host.viewMedalsTx}
+                </a>
+              </div>
             )}
             <br />
             <button
