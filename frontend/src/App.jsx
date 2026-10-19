@@ -44,6 +44,7 @@ export default function App() {
   const [savedSession, setSavedSession] = useState(null);
   const [resumeData, setResumeData] = useState(null);
   const [studentResumeData, setStudentResumeData] = useState(null);
+  const [joinPlayers, setJoinPlayers] = useState([]);
   const resumeAttempted = useRef(false);
   const joinPayloadRef = useRef(null);
 
@@ -208,7 +209,7 @@ export default function App() {
         socket.off("join_rejected", onRejected);
         resolve(value);
       };
-      const onAccepted = () => finish({ success: true });
+      const onAccepted = ({ players } = {}) => finish({ success: true, players });
       const onRejected = ({ reason } = {}) => {
         finish({ error: joinErrorMessage(reason) });
       };
@@ -239,6 +240,7 @@ export default function App() {
     });
 
     setNickname(nickname);
+    setJoinPlayers(outcome.players || []);
     setActiveQuiz(publicQuiz);
     setRole("student");
     setView("game");
@@ -309,6 +311,7 @@ export default function App() {
         quiz={activeQuiz}
         wallet={wallet}
         nickname={nickname}
+        initialPlayers={joinPlayers}
         resumeData={studentResumeData}
         onPlayAgain={() => { joinPayloadRef.current = null; clearSession(); setStudentResumeData(null); setView("join"); setActiveQuiz(null); }}
         onGameEnd={() => { joinPayloadRef.current = null; clearSession(); setStudentResumeData(null); setView("landing"); setActiveQuiz(null); }}

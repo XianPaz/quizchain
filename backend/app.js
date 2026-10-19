@@ -265,6 +265,8 @@ function attachSocketHandlers(io) {
           scores: store.getScores(code),
           players: session.players,
           alreadyAnswered: !!session.answers[session.currentQuestion]?.[address],
+          // Para que el resultado siga marcando qué eligió después de recargar.
+          myAnswer: session.answers[session.currentQuestion]?.[address]?.answerIndex ?? null,
           remainingTime: store.remainingTime(code),
           openedAt: session.questionOpenedAt,
           deadline: session.questionDeadline,
@@ -299,7 +301,13 @@ function attachSocketHandlers(io) {
       socket.data.role = "student";
       socket.data.address = address;
       socket.join(code);
-      socket.emit("join_accepted", { roomCode: code, status: session.status });
+      // La pantalla del alumno monta después de join_accepted y se pierde el
+      // player_joined de su propia entrada: la lista tiene que venir acá.
+      socket.emit("join_accepted", {
+        roomCode: code,
+        status: session.status,
+        players: updated.players,
+      });
       io.to(code).emit("player_joined", { players: updated.players });
     });
 
