@@ -305,6 +305,17 @@ export default function HostGame({ quiz, wallet, onGameEnd, resumeData }) {
               }}>
               {players.length === 0 ? copy.host.startDisabled : copy.host.start(players.length)}
             </button>
+            <br />
+            <button
+              onClick={() => { if (window.confirm(copy.host.cancelRoomConfirm)) handleGameEnd(); }}
+              style={{
+                background: "transparent", color: COLORS.muted,
+                border: `1px solid ${COLORS.border}`, borderRadius: 10,
+                padding: "10px 24px", fontSize: 13, marginTop: 12,
+                cursor: "pointer", fontFamily: "Space Grotesk, sans-serif",
+              }}>
+              {copy.host.cancelRoom}
+            </button>
           </div>
         )}
 

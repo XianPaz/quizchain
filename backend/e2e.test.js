@@ -567,6 +567,100 @@ async function scenarioPodiumMedals(h) {
   closeClients(host, students);
 }
 
+// A teacher has one live room. A new one closes the unfinished previous room and
+// its students follow, live or when they come back with the old code. Only the
+// real host (token) can do it, and nobody is pulled out of a finished quiz.
+async function scenarioStudentsFollowTheTeacher(h) {
+  const roomA = await h.createSession({ name: "sala A", questions: [QUESTIONS[0]] });
+  const hostA = await h.connectHost(roomA.roomCode, roomA.hostToken);
+  const students = await h.connectStudents(roomA.roomCode, specs(2, "F"), hostA);
+
+  // Someone without the token cannot take the class.
+  await h.createSession({
+    name: "intruso",
+    questions: [QUESTIONS[0]],
+    replaces: { roomCode: roomA.roomCode, hostToken: "not-the-token" },
+  });
+  assert.ok(h.session(roomA.roomCode), "room A closed by a stranger");
+  assert.equal(students[0].inbox.last("room_moved"), undefined);
+
+  // The teacher opens room B: room A closes and its students are sent there.
+  const roomB = await h.createSession({
+    name: "sala B",
+    questions: [QUESTIONS[0]],
+    replaces: { roomCode: roomA.roomCode, hostToken: roomA.hostToken },
+  });
+  assert.equal(h.session(roomA.roomCode), null);
+  for (const student of students) {
+    await student.inbox.wait("session_cancelled");
+    const moved = await student.inbox.wait("room_moved");
+    assert.equal(moved.roomCode, roomB.roomCode);
+  }
+
+  const lookup = await h.fetchSession(roomA.roomCode);
+  assert.equal(lookup.status, 404);
+  assert.equal(lookup.body.movedTo, roomB.roomCode);
+
+  const late = await h.connectStudent({
+    roomCode: roomA.roomCode, name: "Tarde", address: studentAddress(60),
+  });
+  const redirected = await late.inbox.wait("join_rejected");
+  assert.equal(redirected.reason, "room_moved");
+  assert.equal(redirected.roomCode, roomB.roomCode);
+
+  // The old host token does not follow: the teacher is told the room is gone.
+  const oldHost = await h.connectHost(roomA.roomCode, roomA.hostToken);
+  assert.equal((await oldHost.inbox.wait("join_rejected")).reason, "session_gone");
+
+  // Cancel from the lobby, then open room C: whoever is still around follows.
+  const hostB = await h.connectHost(roomB.roomCode, roomB.hostToken);
+  const inB = await h.connectStudents(roomB.roomCode, specs(1, "G"), hostB);
+  hostB.emit("host_end_without_distribute");
+  await inB[0].inbox.wait("session_cancelled");
+  const roomC = await h.createSession({
+    name: "sala C",
+    questions: [QUESTIONS[0]],
+    replaces: { roomCode: roomB.roomCode, hostToken: roomB.hostToken },
+  });
+  assert.equal((await inB[0].inbox.wait("room_moved")).roomCode, roomC.roomCode);
+
+  // "Salir" from the rejoin screen goes through DELETE: the room really closes.
+  const hostC = await h.connectHost(roomC.roomCode, roomC.hostToken);
+  const inC = await h.connectStudents(roomC.roomCode, specs(1, "H"), hostC);
+  const del = await fetch(`${h.baseUrl}/sessions/${roomC.roomCode.replace(" ", "-")}`, {
+    method: "DELETE",
+    headers: { "x-host-token": roomC.hostToken },
+  });
+  assert.equal(del.status, 200);
+  await inC[0].inbox.wait("session_cancelled");
+  assert.equal(h.session(roomC.roomCode), null);
+
+  // A finished quiz is not movable: its students stay on their results.
+  const roomD = await h.createSession({ name: "sala D", questions: [QUESTIONS[0]] });
+  const hostD = await h.connectHost(roomD.roomCode, roomD.hostToken);
+  const inD = await h.connectStudents(roomD.roomCode, specs(1, "K"), hostD);
+  hostD.startQuiz();
+  await hostD.inbox.wait("quiz_started");
+  hostD.openQuestion(0);
+  await inD[0].inbox.wait("question_opened");
+  inD[0].answer({ questionIndex: 0, answerIndex: 0 });
+  await hostD.inbox.wait("all_answered");
+  hostD.endQuiz();
+  await hostD.inbox.wait("quiz_ended");
+  hostD.emit("host_end_without_distribute");
+  await inD[0].inbox.wait("session_cancelled");
+  await h.createSession({
+    name: "sala E",
+    questions: [QUESTIONS[0]],
+    replaces: { roomCode: roomD.roomCode, hostToken: roomD.hostToken },
+  });
+  await sleep(100);
+  assert.equal(inD[0].inbox.last("room_moved"), undefined);
+  assert.equal((await h.fetchSession(roomD.roomCode)).body.movedTo, undefined);
+
+  closeClients(hostA, students, late, oldHost, hostB, inB, hostC, inC, hostD, inD);
+}
+
 // The student screen mounts after join_accepted, so the player_joined of its own
 // join is gone by then. The last one in only had addresses, no nicknames.
 async function scenarioLastJoinerGetsNicknames(h) {
@@ -741,6 +835,7 @@ async function main() {
     ["every join gets an answer", scenarioJoinAlwaysAnswered],
     ["the last student in gets the nicknames", scenarioLastJoinerGetsNicknames],
     ["podium medals: after QTKN, only players, survive a reload", scenarioPodiumMedals],
+    ["students follow the teacher to the new room", scenarioStudentsFollowTheTeacher],
     ["stale host console is told, not ignored", scenarioStaleHostIsTold],
     ["a malformed quiz is refused at creation", scenarioMalformedQuizRefused],
     ["a stale index does not close the wrong question", scenarioStaleIndexDoesNotCloseWrongQuestion],

@@ -81,6 +81,13 @@ router.post("/create", (req, res) => {
   const session = store.create(code, {
     name, questions, hostToken, className: className.value, date, sessionId,
   });
+
+  // Un profe tiene una sola sala activa: la nueva cierra la anterior sin
+  // terminar y sus alumnos pasan a esta.
+  const previous = req.body.replaces;
+  const previousCode = previous && parseRoomCode(previous.roomCode);
+  if (previousCode) store.replace(previousCode, String(previous.hostToken || ""), code);
+
   res.json({ success: true, session: hostCreatePayload(session) });
 });
 
@@ -91,7 +98,11 @@ router.get("/:roomCode", (req, res) => {
   }
   const session = store.get(code);
   if (!session) {
-    return res.status(404).json({ error: "No active quiz found with that code" });
+    const movedTo = store.movedTo(code);
+    return res.status(404).json({
+      error: "No active quiz found with that code",
+      ...(movedTo ? { movedTo } : {}),
+    });
   }
   if (session.status === "finished") {
     return res.status(410).json({ error: "This quiz has already ended" });
@@ -105,7 +116,8 @@ router.delete("/:roomCode", (req, res) => {
   if (!session || hostTokenFromReq(req) !== session.hostToken) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  store.delete(code);
+  // Antes se borraba sin avisar y los alumnos esperaban en una sala que ya no existía.
+  store.close(code);
   res.json({ success: true });
 });
 
