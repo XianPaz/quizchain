@@ -486,6 +486,87 @@ async function scenarioJoinAlwaysAnswered(h) {
   closeClients(host, ghost, missing, wrongToken);
 }
 
+// Podium NFTs: the host mints from the wallet and tells the room which token went
+// to whom. Only after the QTKN went out, only for players of the room, and the
+// tokens survive a reload on both sides.
+async function scenarioPodiumMedals(h) {
+  const session = await h.createSession({
+    name: "medallas",
+    className: "  6to A  ",
+    questions: [QUESTIONS[0]],
+  });
+  assert.equal(session.className, "6to A");
+  assert.match(session.date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(session.sessionId.startsWith(`${session.date}-`), session.sessionId);
+  const other = await h.createSession({ name: "otra", questions: [QUESTIONS[0]] });
+  assert.notEqual(other.sessionId, session.sessionId);
+  assert.equal(other.className, "");
+
+  const tooLong = await fetch(`${h.baseUrl}/sessions/create`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "x", className: "x".repeat(41), questions: [QUESTIONS[0]] }),
+  });
+  assert.equal(tooLong.status, 400);
+
+  let host = await h.connectHost(session.roomCode, session.hostToken);
+  let students = await h.connectStudents(session.roomCode, specs(2, "M"), host);
+  host.startQuiz();
+  await host.inbox.wait("quiz_started");
+  host.openQuestion(0);
+  await students[0].inbox.wait("question_opened");
+  students[0].answer({ questionIndex: 0, answerIndex: 0 });
+  await students[0].inbox.wait("answer_ack");
+  students[1].answer({ questionIndex: 0, answerIndex: 0 });
+  await host.inbox.wait("all_answered");
+  host.showStats(0);
+  await host.inbox.wait("question_stats", (p) => p.scores);
+  host.endQuiz();
+  await host.inbox.wait("quiz_ended");
+
+  const tokens = [
+    { address: students[0].address, tokenId: "7", rank: 1 },
+    { address: students[1].address, tokenId: "8", rank: 2 },
+  ];
+
+  host.emit("host_podium_minted", { txHash: "0xmedals", tokens });
+  const early = await host.inbox.wait("host_command_rejected", (p) => p.command === "host_podium_minted");
+  assert.equal(early.reason, "not_distributed");
+
+  host.distribute("0xqtkn");
+  await host.inbox.wait("rewards_distributed");
+
+  host.emit("host_podium_minted", {
+    txHash: "0xmedals",
+    tokens: [{ address: studentAddress(99), tokenId: "9", rank: 1 }],
+  });
+  const stranger = await host.inbox.wait(
+    "host_command_rejected",
+    (p) => p.command === "host_podium_minted" && p.reason === "bad_payload"
+  );
+  assert.equal(stranger.reason, "bad_payload");
+  assert.equal(h.session(session.roomCode).podium, undefined);
+
+  host.emit("host_podium_minted", { txHash: "0xmedals", tokens });
+  for (const student of students) {
+    const minted = await student.inbox.wait("podium_minted");
+    assert.equal(minted.txHash, "0xmedals");
+    assert.deepEqual(minted.tokens.map((t) => t.tokenId), ["7", "8"]);
+  }
+
+  students[1] = await h.reconnectStudent(students[1]);
+  const resumed = students[1].inbox.last("session_resumed");
+  assert.equal(resumed.status, "distributing");
+  assert.equal(resumed.podium.tokens.find((t) => t.address === students[1].address).tokenId, "8");
+
+  host.disconnect();
+  host = await h.connectHost(session.roomCode, session.hostToken);
+  const hostResumed = await host.inbox.wait("session_resumed");
+  assert.equal(hostResumed.podium.txHash, "0xmedals");
+
+  closeClients(host, students);
+}
+
 // The student screen mounts after join_accepted, so the player_joined of its own
 // join is gone by then. The last one in only had addresses, no nicknames.
 async function scenarioLastJoinerGetsNicknames(h) {
@@ -659,6 +740,7 @@ async function main() {
     ["bad question index is refused, server survives", scenarioBadQuestionIndex],
     ["every join gets an answer", scenarioJoinAlwaysAnswered],
     ["the last student in gets the nicknames", scenarioLastJoinerGetsNicknames],
+    ["podium medals: after QTKN, only players, survive a reload", scenarioPodiumMedals],
     ["stale host console is told, not ignored", scenarioStaleHostIsTold],
     ["a malformed quiz is refused at creation", scenarioMalformedQuizRefused],
     ["a stale index does not close the wrong question", scenarioStaleIndexDoesNotCloseWrongQuestion],

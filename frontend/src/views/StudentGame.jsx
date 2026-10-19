@@ -3,7 +3,8 @@ import { useQuizSocket } from "../hooks/useQuizSocket";
 import { useDeadlineTimer } from "../hooks/useDeadlineTimer";
 import { COLORS } from "../styles/colors";
 import { formatAddress, getRankEmoji, placeLabel, pointsToTokens, normalizeAddress } from "../utils/helpers";
-import { getTokenBalance } from "../utils/blockchain";
+import { getTokenBalance, addPodiumNftToWallet } from "../utils/blockchain";
+import { myPodiumToken } from "../utils/podium";
 import { CONTRACTS } from "../config";
 import { copy } from "../copy/es-AR.js";
 import HighlightsBanner from "../components/HighlightsBanner";
@@ -26,6 +27,8 @@ export default function StudentGame({ quiz, wallet, nickname, initialPlayers, re
   const [players, setPlayers] = useState(initialPlayers || []);
   const [balance, setBalance] = useState(null);
   const [highlights, setHighlights] = useState(null);
+  const [podium, setPodium] = useState(null);
+  const [medalAdded, setMedalAdded] = useState(null); // null | "ok" | "failed"
   const pendingRef = useRef(false);
   // Los handlers del socket se registran una sola vez, así que leen de una ref.
   const applyResumeRef = useRef(() => {});
@@ -46,11 +49,12 @@ export default function StudentGame({ quiz, wallet, nickname, initialPlayers, re
     if (!data) return;
     const {
       status, currentQuestion, scores, players, alreadyAnswered,
-      questionStats, remainingTime, highlights, myAnswer,
+      questionStats, remainingTime, highlights, myAnswer, podium,
     } = data;
 
     setPlayers(players || []);
     setSelectedAnswer(myAnswer ?? null);
+    if (podium) setPodium(podium);
     setAllScores(scores || {});
     setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
     if (highlights) setHighlights(highlights);
@@ -71,7 +75,9 @@ export default function StudentGame({ quiz, wallet, nickname, initialPlayers, re
       setPhase("viewing_stats");
     } else if (status === "finished") {
       setPhase("finished");
-    } else if (status === "claiming") {
+    } else if (status === "distributing" || status === "claiming") {
+      // El servidor guarda "distributing"; antes el alumno que recargaba después
+      // del reparto quedaba esperando para siempre.
       setPhase("claiming");
     }
   };
@@ -159,8 +165,22 @@ export default function StudentGame({ quiz, wallet, nickname, initialPlayers, re
       setPhase("claiming");
     },
 
+    podium_minted: (data) => setPodium(data),
+
     session_resumed: (data) => applyResumeRef.current(data),
   });
+
+  const myMedal = myPodiumToken(podium, myAddress);
+  const onPodium = !!CONTRACTS.PODIUM_NFT && (myScore?.rank ?? 99) <= 3 && (myScore?.totalTokens ?? 0) > 0;
+
+  const addMedal = async () => {
+    try {
+      const added = await addPodiumNftToWallet(myMedal.tokenId);
+      setMedalAdded(added === false ? "failed" : "ok");
+    } catch {
+      setMedalAdded("failed");
+    }
+  };
 
   const handleAnswer = (answerIndex) => {
     if (answered || pendingRef.current || phase !== "answering") return;
@@ -527,6 +547,61 @@ export default function StudentGame({ quiz, wallet, nickname, initialPlayers, re
               }}>
               {copy.game.viewOnEtherscan}
             </a>
+
+            {myMedal && (
+              <div style={{
+                background: `${COLORS.yellow}11`, border: `1px solid ${COLORS.yellow}44`,
+                borderRadius: 12, padding: 20, marginBottom: 24,
+              }}>
+                <div style={{ fontSize: 40, marginBottom: 8 }}>{getRankEmoji(myMedal.rank)}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.yellow, marginBottom: 6 }}>
+                  {copy.game.medalTitle(copy.medals[myMedal.rank])}
+                </div>
+                <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 4 }}>{copy.game.medalBody}</div>
+                <div style={{
+                  fontFamily: "JetBrains Mono, monospace", fontSize: 11,
+                  color: COLORS.muted, marginBottom: 14,
+                }}>
+                  {copy.game.medalToken(myMedal.tokenId)} · {formatAddress(CONTRACTS.PODIUM_NFT)}
+                </div>
+                <button
+                  onClick={addMedal}
+                  disabled={medalAdded === "ok"}
+                  style={{
+                    background: medalAdded === "ok" ? COLORS.border : COLORS.yellow,
+                    color: medalAdded === "ok" ? COLORS.muted : "#000",
+                    border: "none", borderRadius: 10, padding: "12px 20px",
+                    fontSize: 14, fontWeight: 700, marginBottom: 10,
+                    cursor: medalAdded === "ok" ? "default" : "pointer",
+                    fontFamily: "Space Grotesk, sans-serif",
+                  }}>
+                  {medalAdded === "ok" ? copy.game.addedToMetaMask : copy.game.addToMetaMask}
+                </button>
+                {medalAdded === "failed" && (
+                  <div style={{ fontSize: 12, color: COLORS.red, marginBottom: 10 }}>
+                    {copy.game.addToMetaMaskFailed}
+                  </div>
+                )}
+                <div>
+                  <a
+                    href={`https://sepolia.etherscan.io/nft/${CONTRACTS.PODIUM_NFT}/${myMedal.tokenId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontFamily: "JetBrains Mono, monospace", fontSize: 11,
+                      color: COLORS.yellow, textDecoration: "none",
+                    }}>
+                    {copy.game.viewMedal}
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {!myMedal && onPodium && (
+              <p style={{ color: COLORS.yellow, fontSize: 13, marginBottom: 24 }}>
+                🏅 {copy.game.medalWaiting}
+              </p>
+            )}
 
             <br />
             <button

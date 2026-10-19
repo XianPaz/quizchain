@@ -1,5 +1,6 @@
 import { ethers } from "ethers";
-import { CONTRACTS, QUIZ_TOKEN_ABI } from "../config";
+import { CONTRACTS, QUIZ_TOKEN_ABI, PODIUM_NFT_ABI } from "../config";
+import { podiumTokensFromEvents } from "./podium";
 
 function getProvider() {
   if (!window.ethereum) throw new Error("MetaMask not found");
@@ -52,4 +53,38 @@ export async function distributeRewards(scores) {
   console.log("Transaction confirmed:", tx.hash);
 
   return tx.hash;
+}
+
+// Una sola transacción para todo el podio. Los IDs salen de los eventos del
+// recibo: el contrato numera en orden y no hay otra forma de saber cuál tocó.
+export async function mintPodiumNfts({ recipients, inputs }) {
+  const provider = getProvider();
+  const signer = await provider.getSigner();
+  const contract = new ethers.Contract(CONTRACTS.PODIUM_NFT, PODIUM_NFT_ABI, signer);
+
+  const tx = await contract.mintPodiumBatch(recipients, inputs);
+  const receipt = await tx.wait();
+
+  const events = receipt.logs
+    .filter((log) => log.address.toLowerCase() === CONTRACTS.PODIUM_NFT.toLowerCase())
+    .map((log) => {
+      try { return contract.interface.parseLog(log); } catch { return null; }
+    })
+    .filter((parsed) => parsed && parsed.name === "PodiumMinted")
+    .map((parsed) => parsed.args);
+
+  return { hash: tx.hash, tokens: podiumTokensFromEvents(events) };
+}
+
+// MetaMask pregunta al alumno y la agrega a la pestaña NFTs. En Sepolia no la
+// detecta sola, así que sin esto había que importarla a mano.
+export async function addPodiumNftToWallet(tokenId) {
+  if (!window.ethereum) throw new Error("MetaMask not found");
+  return window.ethereum.request({
+    method: "wallet_watchAsset",
+    params: {
+      type: "ERC721",
+      options: { address: CONTRACTS.PODIUM_NFT, tokenId: String(tokenId) },
+    },
+  });
 }

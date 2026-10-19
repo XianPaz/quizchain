@@ -21,6 +21,7 @@ const TRACKED_EVENTS = [
   "join_rejected",
   "join_accepted",
   "host_command_rejected",
+  "podium_minted",
 ];
 
 function sleep(ms) {
@@ -120,12 +121,13 @@ function defaultQuestions() {
   ];
 }
 
-async function createSession(baseUrl, { roomCode, name = "Harness Quiz", questions } = {}) {
+async function createSession(baseUrl, { roomCode, name = "Harness Quiz", questions, className } = {}) {
   const payload = {
     name,
     questions: questions || defaultQuestions(),
   };
   if (roomCode) payload.roomCode = roomCode;
+  if (className !== undefined) payload.className = className;
   const res = await fetch(`${baseUrl}/sessions/create`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
