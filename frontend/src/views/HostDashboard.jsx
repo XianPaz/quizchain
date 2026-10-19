@@ -3,11 +3,13 @@ import { COLORS } from "../styles/colors";
 import { styles } from "../styles/styles";
 import WalletBar from "../components/WalletBar";
 import { parseQuizCSV } from "../utils/parseQuizCSV";
+import { copy } from "../copy/es-AR.js";
 
 export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError, connecting }) {
   const [tab, setTab] = useState("upload");
   const [questions, setQuestions] = useState([]);
   const [quizName, setQuizName] = useState("");
+  const [className, setClassName] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -18,7 +20,7 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
 
     if (!file) return;
     if (!file.name.endsWith(".csv")) {
-      setUploadError("Please upload a .csv file. Export from Google Sheets via File → Download → CSV.");
+      setUploadError(copy.hostDashboard.csvOnly);
       return;
     }
 
@@ -58,8 +60,8 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
         background: COLORS.surface,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <button onClick={onBack} className="btn btn-secondary btn-sm">← Back</button>
-          <span className="brand" style={{ fontSize: 16, color: COLORS.accent }}>HOST DASHBOARD</span>
+          <button onClick={onBack} className="btn btn-secondary btn-sm">← {copy.hostDashboard.back}</button>
+          <span className="brand" style={{ fontSize: 16, color: COLORS.accent }}>{copy.hostDashboard.title}</span>
         </div>
         <WalletBar
           wallet={wallet}
@@ -81,7 +83,7 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
               onClick={() => setTab(t)}
               disabled={t === "preview" && questions.length === 0}
             >
-              {t === "upload" ? "📂 Upload Quiz" : `👁 Preview (${questions.length})`}
+              {t === "upload" ? `📂 ${copy.hostDashboard.tabUpload}` : `👁 ${copy.hostDashboard.tabPreview(questions.length)}`}
             </button>
           ))}
         </div>
@@ -93,10 +95,10 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
             {/* Template instructions */}
             <div className="card" style={{ marginBottom: 20 }}>
               <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>
-                📋 Google Sheets Template
+                📋 {copy.hostDashboard.templateTitle}
               </div>
               <div style={{ color: COLORS.muted, fontSize: 13, lineHeight: 1.8, marginBottom: 16 }}>
-                Create a Google Sheet following this exact structure, then export as CSV:
+                {copy.hostDashboard.templateIntro}
               </div>
 
               {/* Template table */}
@@ -142,13 +144,9 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
               </div>
 
               <div style={{ fontSize: 12, color: COLORS.muted, lineHeight: 1.8 }}>
-                <div>• <strong style={{ color: COLORS.text }}>Row 1:</strong> quiz_name in A1, your quiz title in B1</div>
-                <div>• <strong style={{ color: COLORS.text }}>Row 2:</strong> leave empty</div>
-                <div>• <strong style={{ color: COLORS.text }}>Row 3:</strong> column headers (required, not imported)</div>
-                <div>• <strong style={{ color: COLORS.text }}>Row 4+:</strong> one question per row</div>
-                <div>• <strong style={{ color: COLORS.text }}>options:</strong> 2 to 6 columns (option_a to option_f), leave unused columns empty</div>
-                <div>• <strong style={{ color: COLORS.text }}>correct:</strong> must be A, B, C, D, E or F matching the number of options</div>
-                <div>• <strong style={{ color: COLORS.text }}>time_limit:</strong> seconds between 5 and 120</div>
+                {copy.hostDashboard.templateRules.map(([label, text]) => (
+                  <div key={label}>• <strong style={{ color: COLORS.text }}>{label}:</strong> {text}</div>
+                ))}
               </div>
 
               <div style={{
@@ -156,7 +154,7 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
                 background: `${COLORS.blue}11`, border: `1px solid ${COLORS.blue}33`,
                 borderRadius: 8, fontSize: 12, color: COLORS.blue,
               }}>
-                💡 In Google Sheets: <strong>File → Download → Comma Separated Values (.csv)</strong>
+                💡 {copy.hostDashboard.sheetsHint}
               </div>
             </div>
 
@@ -175,10 +173,10 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
               }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>📂</div>
               <div style={{ fontWeight: 700, fontSize: 16, color: COLORS.text, marginBottom: 6 }}>
-                Drop your CSV file here
+                {copy.hostDashboard.dropTitle}
               </div>
               <div style={{ color: COLORS.muted, fontSize: 13 }}>
-                or click to browse
+                {copy.hostDashboard.dropHint}
               </div>
               <input
                 id="csv-input"
@@ -213,16 +211,31 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 4 }}>QUIZ NAME</div>
+                  <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 4 }}>{copy.hostDashboard.quizName}</div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: COLORS.text }}>{quizName}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 4 }}>QUESTIONS</div>
+                  <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 4 }}>{copy.hostDashboard.questions}</div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: COLORS.accent }}>
                     {questions.length}
                   </div>
                 </div>
               </div>
+              <label style={{ display: "block", marginTop: 16 }}>
+                <div style={{ fontSize: 12, color: COLORS.muted, marginBottom: 4 }}>
+                  {copy.hostDashboard.className}
+                </div>
+                <input
+                  className="input"
+                  value={className}
+                  maxLength={40}
+                  placeholder={copy.hostDashboard.classNamePlaceholder}
+                  onChange={(e) => setClassName(e.target.value)}
+                />
+                <div style={{ fontSize: 11, color: COLORS.muted, marginTop: 4 }}>
+                  {copy.hostDashboard.classNameHint}
+                </div>
+              </label>
             </div>
 
             {/* Question list */}
@@ -276,13 +289,13 @@ export default function HostDashboard({ wallet, onStartQuiz, onBack, walletError
                 className="btn btn-secondary"
                 style={{ flex: 1 }}
                 onClick={() => { setTab("upload"); setQuestions([]); setQuizName(""); setUploadSuccess(false); }}>
-                ↩ Upload Different File
+                ↩ {copy.hostDashboard.uploadOther}
               </button>
               <button
                 className="btn btn-primary"
                 style={{ flex: 2, fontSize: 16 }}
-                onClick={() => onStartQuiz({ name: quizName, questions })}>
-                🚀 Launch Quiz Session
+                onClick={() => onStartQuiz({ name: quizName, questions, className: className.trim() })}>
+                🚀 {copy.hostDashboard.launch}
               </button>
             </div>
           </div>

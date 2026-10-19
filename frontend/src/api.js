@@ -1,19 +1,38 @@
+import { normalizeRoomCode } from "./game/contract";
+
 const BASE = import.meta.env.VITE_API_URL;
 
-export async function createSession(roomCode, name, questions) {
+export { normalizeRoomCode };
+
+// Canonical HTTP path: /sessions/cactus-maple
+function roomCodePath(roomCode) {
+  return encodeURIComponent(normalizeRoomCode(roomCode).replace(/ /g, "-"));
+}
+
+export async function createSession(roomCode, name, questions, className, replaces) {
+  const body = { name, questions };
+  if (className) body.className = className;
+  if (replaces?.roomCode && replaces?.hostToken) body.replaces = replaces;
+  if (roomCode) body.roomCode = roomCode;
   const res = await fetch(`${BASE}/sessions/create`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ roomCode, name, questions }),
+    body: JSON.stringify(body),
   });
   return res.json();
 }
 
 export async function validateSession(roomCode) {
-  const res = await fetch(`${BASE}/sessions/${roomCode}`);
+  const res = await fetch(`${BASE}/sessions/${roomCodePath(roomCode)}`);
   return res.json(); // { success, session } or { error }
 }
 
-export async function deleteSession(roomCode) {
-  await fetch(`${BASE}/sessions/${roomCode}`, { method: "DELETE" });
+export async function deleteSession(roomCode, hostToken) {
+  await fetch(`${BASE}/sessions/${roomCodePath(roomCode)}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      "x-host-token": hostToken || "",
+    },
+  });
 }

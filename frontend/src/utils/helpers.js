@@ -1,24 +1,28 @@
-import { REWARDS } from "../config";
+// The wallet, QTKN and ranking rules live in shared/gameContract.js, so the
+// professor screen, the student screen and the server always agree.
+import {
+  normalizeAddress,
+  sameAddress,
+  qtknForPlace,
+} from "../game/contract";
+
+export { normalizeAddress, sameAddress, qtknForPlace };
 
 export function formatAddress(addr) {
   if (!addr) return "—";
   return addr.slice(0, 6) + "..." + addr.slice(-4);
 }
 
-export function calcSpeedScore(timeRemaining, timeLimit) {
-  return Math.round((timeRemaining / timeLimit) * 100);
+export function pointsToTokens(qtkn) {
+  return Number(qtkn) || 0;
 }
 
-export function calcTokenReward(correct, speedScores, totalQuestions) {
-  if (correct === 0) return 5;
-  const avgSpeed = speedScores.reduce((a, b) => a + b, 0) / speedScores.length;
-  const accuracyPct = (correct / totalQuestions) * 100;
-  const base = correct * 10;
-  const speedBonus = (base * avgSpeed * 2) / 100;
-  return Math.round((base + speedBonus) * (accuracyPct / 100) + 5);
+// Ordinal en español: 1º, 2º, 3º.
+export function placeLabel(place) {
+  if (!place) return "";
+  return `${Number(place)}º`;
 }
 
 export function getRankEmoji(rank) {
   return rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
 }
-

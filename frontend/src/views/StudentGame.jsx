@@ -1,95 +1,93 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuizSocket } from "../hooks/useQuizSocket";
+import { useDeadlineTimer } from "../hooks/useDeadlineTimer";
 import { COLORS } from "../styles/colors";
-import { formatAddress, getRankEmoji } from "../utils/helpers";
-import { getTokenBalance } from "../utils/blockchain";
+import { formatAddress, getRankEmoji, placeLabel, pointsToTokens, normalizeAddress } from "../utils/helpers";
+import { getTokenBalance, addPodiumNftToWallet } from "../utils/blockchain";
+import { myPodiumToken } from "../utils/podium";
 import { CONTRACTS } from "../config";
+import { copy } from "../copy/es-AR.js";
+import HighlightsBanner from "../components/HighlightsBanner";
+import Leaderboard from "../components/Leaderboard";
+import { rankedScores } from "../utils/ranking";
 
-function Leaderboard({ scores, players, myAddress, quiz }) {
-  const sorted = Object.entries(scores)
-    .map(([address, s]) => ({ address, ...s }))
-    .sort((a, b) => b.correct - a.correct || 0);
-
-  const nicknameMap = {};
-  players.forEach(p => { nicknameMap[p.address] = p.name; });
-
-  return (
-    <div style={{ marginTop: 20 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.muted, marginBottom: 10 }}>
-        LEADERBOARD
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {sorted.map((p, i) => {
-          const isMe = p.address === myAddress;
-          return (
-            <div key={p.address} style={{
-              display: "flex", alignItems: "center", gap: 12,
-              background: isMe ? `${COLORS.accent}11` : COLORS.card,
-              border: `1px solid ${isMe ? COLORS.accent + "44" : COLORS.border}`,
-              borderRadius: 10, padding: "10px 14px",
-            }}>
-              <span style={{ fontSize: 16, width: 28 }}>{getRankEmoji(i + 1)}</span>
-              <span style={{
-                flex: 1, fontSize: 14, fontWeight: isMe ? 700 : 400,
-                color: isMe ? COLORS.accent : COLORS.text,
-              }}>
-                {nicknameMap[p.address] || formatAddress(p.address)}
-                {isMe && <span style={{ color: COLORS.muted, fontSize: 11 }}> (you)</span>}
-              </span>
-              <span style={{ color: COLORS.muted, fontSize: 12 }}>
-                {p.correct}{quiz ? `/${quiz.questions.length}` : ""} correct
-              </span>
-              <span style={{
-                background: `${COLORS.accent}22`, border: `1px solid ${COLORS.accent}44`,
-                borderRadius: 6, padding: "3px 8px",
-                fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: COLORS.accent,
-              }}>
-                ⬡ {p.totalTokens ?? "—"}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlayAgain, onGameEnd }) {
+export default function StudentGame({ quiz, wallet, nickname, initialPlayers, resumeData, onPlayAgain, onGameEnd }) {
   const [phase, setPhase] = useState("lobby_wait");
   // lobby_wait | answering | answer_wait | viewing_stats | finished | claiming | claimed
   const [currentQ, setCurrentQ] = useState(0);
-  const [timeRemaining, setTimeRemaining] = useState(0);
+  const { timeRemaining, arm: armDeadlineTimer, stop: clearTimer } = useDeadlineTimer();
   const [selectedAnswer, setSelectedAnswer] = useState(null);
   const [answered, setAnswered] = useState(false);
   const [questionStats, setQuestionStats] = useState(null);
   const [allScores, setAllScores] = useState({});
-  const myScore = allScores[wallet?.address] || null;
-  const [players, setPlayers] = useState([]);
+  const myAddress = normalizeAddress(wallet?.address);
+  const myScore = (myAddress && allScores[myAddress]) || null;
+  // Llega con join_accepted: el player_joined de la propia entrada se emite
+  // antes de que esta pantalla escuche, y el último en entrar veía direcciones.
+  const [players, setPlayers] = useState(initialPlayers || []);
   const [balance, setBalance] = useState(null);
-  const timerRef = useRef(null);
-  const questionOpenedAt = useRef(null);
-  
-  useEffect(() => {
-    if (!resumeData) return;
-    const { status, currentQuestion, scores, players, alreadyAnswered, questionStats } = resumeData;
+  const [highlights, setHighlights] = useState(null);
+  const [podium, setPodium] = useState(null);
+  const [medalAdded, setMedalAdded] = useState(null); // null | "ok" | "failed"
+  const pendingRef = useRef(false);
+  // Los handlers del socket se registran una sola vez, así que leen de una ref.
+  const applyResumeRef = useRef(() => {});
+
+  const onDeadlineReached = () => {
+    setPhase((prev) => (prev === "answering" ? "answer_wait" : prev));
+  };
+
+  // Se le pasa cuánto falta, no la hora del servidor: el reloj del celular puede
+  // estar corrido y la resta daría cero.
+  const armQuestion = (secondsLeft, timeLimit) => {
+    armDeadlineTimer(secondsLeft, timeLimit, onDeadlineReached);
+  };
+
+  // Usado por la prop resumeData y por session_resumed cuando vuelve el socket.
+  // Estaba escrito dos veces, y la copia del socket no tenía estas guardas.
+  const applyResume = (data) => {
+    if (!data) return;
+    const {
+      status, currentQuestion, scores, players, alreadyAnswered,
+      questionStats, remainingTime, highlights, myAnswer, podium,
+    } = data;
 
     setPlayers(players || []);
+    setSelectedAnswer(myAnswer ?? null);
+    if (podium) setPodium(podium);
     setAllScores(scores || {});
     setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
+    if (highlights) setHighlights(highlights);
 
     if (status === "waiting" || status === "active") {
       setPhase("lobby_wait");
     } else if (status === "question_open") {
       setAnswered(alreadyAnswered || false);
-      setPhase("answer_wait");
+      if (alreadyAnswered) {
+        setPhase("answer_wait");
+      } else {
+        setPhase("answering");
+        const q = quiz.questions[currentQuestion === -1 ? 0 : currentQuestion];
+        armQuestion(remainingTime, q?.timeLimit);
+      }
     } else if (status === "showing_stats") {
       if (questionStats) setQuestionStats(questionStats);
       setPhase("viewing_stats");
     } else if (status === "finished") {
       setPhase("finished");
-    } else if (status === "claiming") {
+    } else if (status === "distributing" || status === "claiming") {
+      // El servidor guarda "distributing"; antes el alumno que recargaba después
+      // del reparto quedaba esperando para siempre.
       setPhase("claiming");
     }
+  };
+
+  useEffect(() => {
+    applyResumeRef.current = applyResume;
+  });
+
+  useEffect(() => {
+    applyResumeRef.current(resumeData);
   }, [resumeData]);
 
   useEffect(() => {
@@ -107,37 +105,48 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
       setPhase("lobby_wait"); // wait for first question_opened
     },
 
-    question_opened: ({ questionIndex }) => {
+    question_opened: ({ questionIndex, timeLimit }) => {
+      clearTimer();
+      pendingRef.current = false;
       setCurrentQ(questionIndex);
       setSelectedAnswer(null);
       setAnswered(false);
       setQuestionStats(null);
+      setHighlights(null);
       setPhase("answering");
-      questionOpenedAt.current = Date.now();
-
-      const limit = quiz.questions[questionIndex].timeLimit;
-      setTimeRemaining(limit);
-
-      timerRef.current = setInterval(() => {
-        setTimeRemaining(prev => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current);
-            handleTimeout(questionIndex);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+      const limit = timeLimit || quiz.questions[questionIndex]?.timeLimit;
+      armQuestion(limit, limit);
     },
 
     answer_ack: () => {
-      clearInterval(timerRef.current);
+      clearTimer();
+      pendingRef.current = false;
+      setAnswered(true);
       setPhase("answer_wait");
     },
 
+    answer_rejected: ({ reason }) => {
+      pendingRef.current = false;
+      // duplicate: la respuesta ya quedó registrada en el servidor. Volver a
+      // "podés responder" la hacía desaparecer de la pantalla y el alumno
+      // reintentaba para siempre. seat_moved tampoco se puede reintentar.
+      const noSeRetoca = ["after_deadline", "question_not_open", "duplicate", "seat_moved"];
+      if (noSeRetoca.includes(reason)) {
+        clearTimer();
+        if (reason !== "duplicate") setSelectedAnswer(null);
+        setAnswered(true);
+        setPhase("answer_wait");
+        return;
+      }
+      setSelectedAnswer(null);
+      setAnswered(false);
+    },
+
     question_stats: (stats) => {
+      clearTimer();
       setQuestionStats(stats);
       if (stats.scores) setAllScores(stats.scores);
+      if (stats.highlights) setHighlights(stats.highlights);
       setPhase("viewing_stats");
     },
 
@@ -156,61 +165,37 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
       setPhase("claiming");
     },
 
-    session_resumed: ({ status, currentQuestion, scores, players, alreadyAnswered, questionStats }) => {
-      setPlayers(players);
-      setAllScores(scores);
-      setCurrentQ(currentQuestion === -1 ? 0 : currentQuestion);
+    podium_minted: (data) => setPodium(data),
 
-      if (status === "waiting" || status === "active") {
-        setPhase("lobby_wait");
-      } else if (status === "question_open") {
-        setAnswered(alreadyAnswered);
-        setPhase("answer_wait");
-      } else if (status === "showing_stats") {
-        if (questionStats) setQuestionStats(questionStats);
-        setPhase("viewing_stats");
-      } else if (status === "finished") {
-        setPhase("finished");
-      } else if (status === "claiming") {
-        setPhase("claiming");
-      }
-    },
-
+    session_resumed: (data) => applyResumeRef.current(data),
   });
 
+  const myMedal = myPodiumToken(podium, myAddress);
+  const onPodium = !!CONTRACTS.PODIUM_NFT && (myScore?.rank ?? 99) <= 3 && (myScore?.totalTokens ?? 0) > 0;
+
+  const addMedal = async () => {
+    try {
+      const added = await addPodiumNftToWallet(myMedal.tokenId);
+      setMedalAdded(added === false ? "failed" : "ok");
+    } catch {
+      setMedalAdded("failed");
+    }
+  };
+
   const handleAnswer = (answerIndex) => {
-    if (answered || phase !== "answering") return;
-    clearInterval(timerRef.current);
+    if (answered || pendingRef.current || phase !== "answering") return;
+    pendingRef.current = true;
     setSelectedAnswer(answerIndex);
-    setAnswered(true);
-
-    const elapsed = (Date.now() - questionOpenedAt.current) / 1000;
-    const limit = question.timeLimit;
-    const speedScore = Math.round((Math.max(0, limit - elapsed) / limit) * 100);
-
     emit("student_answer", {
-      address: wallet?.address,
       questionIndex: currentQ,
       answerIndex,
-      speedScore,
     });
   };
 
-  const handleTimeout = (questionIndex) => {
-    if (answered) return;
-    setAnswered(true);
-    emit("student_timeout", {
-      address: wallet?.address,
-      questionIndex: questionIndex ?? currentQ,
-    });
-    setPhase("answer_wait");
-  };
-
-  const sortedScores = Object.entries(allScores)
-    .map(([address, s]) => ({ address, ...s }))
-    .sort((a, b) => b.totalTokens - a.totalTokens);
-
-  const myRank = sortedScores.findIndex(s => s.address === wallet?.address) + 1;
+  // The place comes from the server, which ranks with ties and pays by that rank.
+  const myRank = myScore?.rank ?? (rankedScores(allScores).findIndex(
+    (s) => s.address === myAddress
+  ) + 1);
 
   return (
     <div style={{ minHeight: "100vh", background: COLORS.bg, fontFamily: "Space Grotesk, sans-serif" }}>
@@ -238,7 +223,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, marginBottom: 8, color: COLORS.text }}>
               {quiz.name}
             </h2>
-            <p style={{ color: COLORS.muted }}>Waiting for the host to start the quiz...</p>
+            <p style={{ color: COLORS.muted }}>{copy.game.waitingStart}</p>
             <div style={{
               display: "inline-flex", alignItems: "center", gap: 8,
               background: `${COLORS.accent}11`, border: `1px solid ${COLORS.accent}33`,
@@ -248,7 +233,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 width: 8, height: 8, borderRadius: "50%", background: COLORS.accent,
                 display: "inline-block", boxShadow: `0 0 6px ${COLORS.accent}`,
               }} />
-              Connected to room <strong style={{ color: COLORS.accent }}>{quiz.roomCode}</strong>
+              {copy.game.connectedTo} <strong style={{ color: COLORS.accent }}>{quiz.roomCode}</strong>
             </div>
           </div>
         )}
@@ -262,7 +247,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
               alignItems: "center", marginBottom: 16,
             }}>
               <span style={{ color: COLORS.muted, fontSize: 13 }}>
-                Question {currentQ + 1} / {quiz.questions.length}
+                {copy.game.questionOf(currentQ + 1, quiz.questions.length)}
               </span>
               <div style={{
                 fontFamily: "Orbitron, sans-serif", fontSize: 28, fontWeight: 900,
@@ -326,10 +311,10 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
               {selectedAnswer !== null ? "✅" : "⏱️"}
             </div>
             <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: COLORS.text }}>
-              {selectedAnswer !== null ? "Answer submitted!" : "Time's up!"}
+              {selectedAnswer !== null ? copy.game.answerSent : copy.game.timeout}
             </h3>
             <p style={{ color: COLORS.muted }}>
-              Waiting for all students to answer...
+              {copy.game.waitingAllAnswers}
             </p>
           </div>
         )}
@@ -341,7 +326,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
               textAlign: "center", fontFamily: "Orbitron, sans-serif",
               fontSize: 18, marginBottom: 20, color: COLORS.accent,
             }}>
-              QUESTION {currentQ + 1} RESULTS
+              {copy.game.results(currentQ + 1)}
             </div>
 
             {/* Question description */}
@@ -353,21 +338,41 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
             {quiz.questions[currentQ].question}
             </div>
 
-            {/* Correct/wrong feedback */}
-            {selectedAnswer !== null && (
+            {(() => {
+              const gotIt = (myScore?.lastPoints ?? 0) > 0;
+              const label = gotIt
+                ? copy.game.correct
+                : selectedAnswer === null ? `⏱️ ${copy.game.timeout}` : copy.game.incorrect;
+              return (
               <div style={{
-                background: selectedAnswer === questionStats.correctIndex
-                  ? `${COLORS.accent}22` : `${COLORS.red}22`,
-                border: `1px solid ${selectedAnswer === questionStats.correctIndex
-                  ? COLORS.accent + "55" : COLORS.red + "55"}`,
+                background: gotIt ? `${COLORS.accent}22` : `${COLORS.red}22`,
+                border: `1px solid ${gotIt ? COLORS.accent + "55" : COLORS.red + "55"}`,
                 borderRadius: 10, padding: 16, textAlign: "center",
-                marginBottom: 20, fontSize: 16, fontWeight: 700,
-                color: selectedAnswer === questionStats.correctIndex ? COLORS.accent : COLORS.red
+                marginBottom: 20,
+                color: gotIt ? COLORS.accent : COLORS.red
               }}>
-                {selectedAnswer === questionStats.correctIndex
-                  ? "⚡ Correct!" : "✗ Wrong answer"}
+                <div style={{ fontSize: 16, fontWeight: 700 }}>{label}</div>
+                {gotIt && myScore?.lastPlace && (
+                  <div style={{ fontSize: 13, marginTop: 4, opacity: 0.85 }}>
+                    {copy.game.placeToAnswer(placeLabel(myScore.lastPlace))}
+                  </div>
+                )}
+                <div style={{
+                  fontFamily: "Orbitron, sans-serif", fontSize: 32, fontWeight: 900, marginTop: 6,
+                }}>
+                  {gotIt ? `+${myScore.lastPoints}` : "+0"}
+                </div>
+                <div style={{ fontSize: 13, marginTop: 4, opacity: 0.85 }}>
+                  ⬡ {gotIt ? pointsToTokens(myScore.lastPoints) : 0} QTKN
+                </div>
+                {gotIt && myScore?.streak >= 2 && (
+                  <div style={{ fontSize: 13, marginTop: 4 }}>{copy.game.streakBadge(myScore.streak)}</div>
+                )}
               </div>
-            )}
+              );
+            })()}
+
+            <HighlightsBanner highlights={highlights} myAddress={myAddress} />
 
             {/* Distribution */}
             <div style={{
@@ -378,6 +383,8 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 const pct = questionStats.totalPlayers > 0
                   ? Math.round((d.count / questionStats.totalPlayers) * 100) : 0;
                 const isCorrect = i === questionStats.correctIndex;
+                const isMine = i === selectedAnswer;
+                const mineColor = isCorrect ? COLORS.accent : COLORS.red;
                 return (
                   <div key={i} style={{ marginBottom: 12 }}>
                     <div style={{
@@ -387,6 +394,15 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                       <span style={{ color: isCorrect ? COLORS.accent : COLORS.text }}>
                         {["A", "B", "C", "D", "E", "F"][i]}. {quiz.questions[currentQ].options[i]}
                         {isCorrect && " ✓"}
+                        {isMine && (
+                          <span style={{
+                            marginLeft: 8, padding: "1px 6px", borderRadius: 4,
+                            fontSize: 11, fontWeight: 700, color: mineColor,
+                            background: `${mineColor}22`, border: `1px solid ${mineColor}55`,
+                          }}>
+                            {copy.game.yourAnswer}
+                          </span>
+                        )}
                       </span>
                       <span style={{ color: COLORS.muted }}>{d.count} ({pct}%)</span>
                     </div>
@@ -403,11 +419,11 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
             </div>
 
             {Object.keys(allScores).length > 0 && (
-              <Leaderboard scores={allScores} players={players} myAddress={wallet?.address} quiz={quiz} />
+              <Leaderboard scores={allScores} players={players} quiz={quiz} myAddress={myAddress} />
             )}
 
             <p style={{ textAlign: "center", color: COLORS.muted, fontSize: 13 }}>
-              Waiting for host to continue...
+              {copy.game.waitingNextQuestion}
             </p>
           </div>
         )}
@@ -417,19 +433,19 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
         <div style={{ textAlign: "center", paddingTop: 40 }}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>😔</div>
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, marginBottom: 8, color: COLORS.text }}>
-            Session Ended
+            {copy.game.cancelledTitle}
             </h2>
             <p style={{ color: COLORS.muted, marginBottom: 24 }}>
-            The host ended the session without distributing rewards.
+            {copy.game.cancelledBody}
             </p>
             {myScore && (
             <div style={{
                 background: COLORS.card, border: `1px solid ${COLORS.border}`,
                 borderRadius: 12, padding: 20, marginBottom: 24,
             }}>
-                <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 8 }}>YOUR SCORE</div>
+                <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 8 }}>{copy.game.yourScore}</div>
                 <div style={{ fontSize: 24, fontWeight: 900, color: COLORS.text }}>
-                {myScore.correct}/{quiz.questions.length} correct
+                {copy.game.correctOf(myScore.correct, quiz.questions.length)}
                 </div>
             </div>
             )}
@@ -442,7 +458,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 fontSize: 14, cursor: "pointer",
                 fontFamily: "Space Grotesk, sans-serif",
             }}>
-            Back to Home
+            {copy.game.backHome}
             </button>
         </div>
         )}
@@ -452,35 +468,41 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>🏁</div>
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, marginBottom: 8, color: COLORS.text }}>
-              Quiz Complete!
+              {copy.game.finishedTitle}
             </h2>
             {myScore && (
               <div style={{
                 background: COLORS.card, border: `1px solid ${COLORS.border}`,
                 borderRadius: 12, padding: 24, marginBottom: 24,
               }}>
-                <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 12 }}>YOUR SCORE</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 12 }}>{copy.game.yourScore}</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
                   <div>
                     <div style={{ fontSize: 28, fontWeight: 900, color: COLORS.text }}>
                       {myScore.correct}/{quiz.questions.length}
                     </div>
-                    <div style={{ fontSize: 12, color: COLORS.muted }}>Correct</div>
+                    <div style={{ fontSize: 12, color: COLORS.muted }}>{copy.game.statCorrect}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 28, fontWeight: 900, color: COLORS.accent }}>
+                      {myScore.totalPoints ?? 0}
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.muted }}>{copy.game.statQtkn}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: 28, fontWeight: 900 }}>{getRankEmoji(myRank)}</div>
-                    <div style={{ fontSize: 12, color: COLORS.muted }}>Rank</div>
+                    <div style={{ fontSize: 12, color: COLORS.muted }}>{copy.game.statRank}</div>
                   </div>
                 </div>
               </div>
             )}
 
             {Object.keys(allScores).length > 0 && (
-              <Leaderboard scores={allScores} players={players} myAddress={wallet?.address} quiz={quiz} />
+              <Leaderboard scores={allScores} players={players} quiz={quiz} myAddress={myAddress} />
             )}
 
             <p style={{ color: COLORS.muted, fontSize: 14 }}>
-              ⏳ Waiting for host to distribute rewards...
+              {copy.game.waitingRewards}
             </p>
           </div>
         )}
@@ -490,13 +512,13 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
           <div style={{ textAlign: "center" }}>
             <div style={{ fontSize: 56, marginBottom: 16 }}>🎉</div>
             <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: 22, marginBottom: 8, color: COLORS.accent }}>
-              Tokens Received!
+              {copy.game.claimedTitle}
             </h2>
             <div style={{
               background: `${COLORS.accent}11`, border: `1px solid ${COLORS.accent}44`,
               borderRadius: 12, padding: 24, marginBottom: 24,
             }}>
-              <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 8 }}>YOU RECEIVED</div>
+              <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 8 }}>{copy.game.claimedLabel}</div>
               <div style={{
                 fontFamily: "Orbitron, sans-serif", fontSize: 42, fontWeight: 900,
                 color: COLORS.accent,
@@ -505,11 +527,11 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
               </div>
               {balance && (
                 <div style={{ fontSize: 13, color: COLORS.muted, marginTop: 8 }}>
-                  Your new balance: <strong style={{ color: COLORS.text }}>{balance} QTKN</strong>
+                  {copy.game.newBalance}: <strong style={{ color: COLORS.text }}>{balance} QTKN</strong>
                 </div>
               )}
               <div style={{ fontSize: 12, color: COLORS.muted, marginTop: 8 }}>
-                Sent to {formatAddress(wallet?.address)} on Sepolia
+                {copy.game.sentTo(formatAddress(wallet?.address))}
               </div>
             </div>
             <a
@@ -523,8 +545,63 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 fontFamily: "JetBrains Mono, monospace", fontSize: 11,
                 color: COLORS.accent, textDecoration: "none",
               }}>
-              🔗 View on Etherscan
+              {copy.game.viewOnEtherscan}
             </a>
+
+            {myMedal && (
+              <div style={{
+                background: `${COLORS.yellow}11`, border: `1px solid ${COLORS.yellow}44`,
+                borderRadius: 12, padding: 20, marginBottom: 24,
+              }}>
+                <div style={{ fontSize: 40, marginBottom: 8 }}>{getRankEmoji(myMedal.rank)}</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.yellow, marginBottom: 6 }}>
+                  {copy.game.medalTitle(copy.medals[myMedal.rank])}
+                </div>
+                <div style={{ fontSize: 13, color: COLORS.muted, marginBottom: 4 }}>{copy.game.medalBody}</div>
+                <div style={{
+                  fontFamily: "JetBrains Mono, monospace", fontSize: 11,
+                  color: COLORS.muted, marginBottom: 14,
+                }}>
+                  {copy.game.medalToken(myMedal.tokenId)} · {formatAddress(CONTRACTS.PODIUM_NFT)}
+                </div>
+                <button
+                  onClick={addMedal}
+                  disabled={medalAdded === "ok"}
+                  style={{
+                    background: medalAdded === "ok" ? COLORS.border : COLORS.yellow,
+                    color: medalAdded === "ok" ? COLORS.muted : "#000",
+                    border: "none", borderRadius: 10, padding: "12px 20px",
+                    fontSize: 14, fontWeight: 700, marginBottom: 10,
+                    cursor: medalAdded === "ok" ? "default" : "pointer",
+                    fontFamily: "Space Grotesk, sans-serif",
+                  }}>
+                  {medalAdded === "ok" ? copy.game.addedToMetaMask : copy.game.addToMetaMask}
+                </button>
+                {medalAdded === "failed" && (
+                  <div style={{ fontSize: 12, color: COLORS.red, marginBottom: 10 }}>
+                    {copy.game.addToMetaMaskFailed}
+                  </div>
+                )}
+                <div>
+                  <a
+                    href={`https://sepolia.etherscan.io/nft/${CONTRACTS.PODIUM_NFT}/${myMedal.tokenId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      fontFamily: "JetBrains Mono, monospace", fontSize: 11,
+                      color: COLORS.yellow, textDecoration: "none",
+                    }}>
+                    {copy.game.viewMedal}
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {!myMedal && onPodium && (
+              <p style={{ color: COLORS.yellow, fontSize: 13, marginBottom: 24 }}>
+                🏅 {copy.game.medalWaiting}
+              </p>
+            )}
 
             <br />
             <button
@@ -536,7 +613,7 @@ export default function StudentGame({ quiz, wallet, nickname, resumeData, onPlay
                 fontSize: 14, cursor: "pointer",
                 fontFamily: "Space Grotesk, sans-serif",
               }}>
-              Play Again
+              {copy.game.playAgain}
             </button>
           </div>
         )}

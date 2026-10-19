@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useWallet } from "./hooks/useWallet";
 import LandingView    from "./views/LandingView";
 import HostDashboard  from "./views/HostDashboard";
@@ -7,33 +7,101 @@ import HostGame    from "./views/HostGame";
 import StudentGame from "./views/StudentGame";
 import RejoinView from "./views/RejoinView";
 import { isMinter } from "./utils/blockchain";
-import { loadSession, saveSession, clearSession } from "./hooks/useSessionPersistence";
-import { SAMPLE_QUESTIONS } from "./constants/sampleData";
+import {
+  loadSession, saveSession, clearSession, saveLastHosted, loadLastHosted,
+} from "./hooks/useSessionPersistence";
 
-import { createSession, validateSession } from "./api";
+import { createSession, validateSession, deleteSession, normalizeRoomCode } from "./api";
 import socket from "./socket";
+
+// Solo estos motivos significan que el lugar en la sala se perdió de verdad.
+// seat_taken es transitorio: el servidor todavía ve vivo el socket anterior
+// mientras el alumno reconecta, y borrar la sesión ahí lo dejaba afuera del quiz.
+const MOTIVOS_SIN_VUELTA = ["invalid_address", "invalid_room_code", "session_gone"];
+
+// Ni el reingreso ni la entrada pueden quedar esperando para siempre.
+const ESPERA_MAXIMA_MS = 12000;
+
+const MENSAJE_RECHAZO = {
+  seat_taken: "Esa wallet ya está en la sala.",
+  quiz_already_started: "El quiz ya arrancó.",
+  invalid_address: "La wallet no es válida.",
+  invalid_room_code: "Ese código de sala no existe. Son dos palabras.",
+  session_gone: "La sala se cerró.",
+  bad_host_token: "Esta sala ya no reconoce tu sesión de profe.",
+  room_moved: "El profe abrió otra sala.",
+};
+
+function joinErrorMessage(reason) {
+  return MENSAJE_RECHAZO[reason] || "No se pudo entrar a la sala.";
+}
 
 export default function App() {
   const [view, setView]           = useState("landing");
   const [activeQuiz, setActiveQuiz] = useState(null);
   const { wallet, connect, disconnect, error: walletError, connecting } = useWallet();
   const [role, setRole] = useState(null); // "host" | "student"
-  const [activeSessions, setActiveSessions] = useState({});
   const [nickname, setNickname] = useState("");
   const [minterError, setMinterError] = useState("");
+  const [rejoinError, setRejoinError] = useState("");
   const [savedSession, setSavedSession] = useState(null);
   const [resumeData, setResumeData] = useState(null);
   const [studentResumeData, setStudentResumeData] = useState(null);
+  const [joinPlayers, setJoinPlayers] = useState([]);
+  const resumeAttempted = useRef(false);
+  const joinPayloadRef = useRef(null);
+  // Los handlers del socket se registran una vez y leen de acá la versión actual.
+  const followTeacherRef = useRef(() => {});
+  const joinQuizRef = useRef(async () => ({ error: "not ready" }));
 
   useEffect(() => {
+    const onConnect = () => {
+      if (joinPayloadRef.current) socket.emit("join_room", joinPayloadRef.current);
+    };
+    socket.on("connect", onConnect);
+    return () => socket.off("connect", onConnect);
+  }, []);
+
+  const joinRoom = (payload) => {
+    joinPayloadRef.current = payload;
+    if (socket.connected) socket.emit("join_room", payload);
+    else socket.connect();
+  };
+
+  // El profe cerró la sala del alumno y abrió otra: el alumno pasa solo, con el
+  // mismo apodo. Llega en vivo (room_moved) o al reconectar con el código viejo.
+  useEffect(() => {
+    const onMoved = ({ roomCode } = {}) => followTeacherRef.current(roomCode);
+    const onRejected = ({ reason, roomCode } = {}) => {
+      if (reason === "room_moved") followTeacherRef.current(roomCode);
+    };
+    socket.on("room_moved", onMoved);
+    socket.on("join_rejected", onRejected);
+    return () => {
+      socket.off("room_moved", onMoved);
+      socket.off("join_rejected", onRejected);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (resumeAttempted.current) return;
     try {
       const saved = loadSession();
       if (!saved) return;
 
+      if (saved.role === "student") {
+        if (!wallet?.address) return;
+        if (wallet.address.toLowerCase() !== String(saved.walletAddress || "").toLowerCase()) {
+          clearSession();
+          resumeAttempted.current = true;
+          return;
+        }
+      }
+
+      resumeAttempted.current = true;
+
       validateSession(saved.roomCode).then(result => {
         if (saved.role === "host") {
-          // For hosts, allow reconnect as long as the session exists (even if finished).
-          // Only a 404 (session gone) should clear the saved session.
           if (result.error === "No active quiz found with that code") {
             clearSession();
             return;
@@ -43,38 +111,59 @@ export default function App() {
           return;
         }
 
-        // For students, allow reconnect as long as the session exists (even if finished).
-        // Only a 404 (session gone) should clear the saved session.
+        if (result.movedTo) {
+          setNickname(saved.nickname || "");
+          joinQuizRef.current(result.movedTo, saved.nickname).then((outcome) => {
+            if (outcome?.error) clearSession();
+          });
+          return;
+        }
+
         if (result.error === "No active quiz found with that code") {
           clearSession();
           return;
         }
 
-        // Wait for session_resumed before navigating so StudentGame mounts
-        // directly in the correct phase with no lobby_wait flash.
-        socket.connect();
-        socket.once("connect", () => {
-          socket.once("session_resumed", (data) => {
-            setStudentResumeData(data);
-            setActiveQuiz(saved.quizData);
-            setRole("student");
-            if (saved.nickname) setNickname(saved.nickname);
-            setView("game");
-          });
-          socket.emit("join_room", {
-            roomCode: saved.roomCode,
-            player: { address: saved.walletAddress, name: saved.nickname },
-            role: "student",
-          });
+        // Los dos handlers se dan de baja juntos, y también solos si no llega
+        // respuesta: si quedaban armados, disparaban después en otro flujo.
+        let timeout = null;
+        const stopListening = () => {
+          if (timeout) clearTimeout(timeout);
+          socket.off("session_resumed", onResumed);
+          socket.off("join_rejected", onRejected);
+        };
+        const onResumed = (data) => {
+          stopListening();
+          setStudentResumeData(data);
+          setActiveQuiz(saved.quizData);
+          setRole("student");
+          if (saved.nickname) setNickname(saved.nickname);
+          setView("game");
+        };
+        const onRejected = ({ reason } = {}) => {
+          stopListening();
+          if (!MOTIVOS_SIN_VUELTA.includes(reason)) return;
+          joinPayloadRef.current = null;
+          clearSession();
+        };
+        socket.on("session_resumed", onResumed);
+        socket.on("join_rejected", onRejected);
+        timeout = setTimeout(stopListening, ESPERA_MAXIMA_MS);
+        joinRoom({
+          roomCode: saved.roomCode,
+          player: { address: wallet.address, name: saved.nickname },
+          role: "student",
         });
 
       }).catch(() => {
-        clearSession();
+        // Un 502 durante un deploy o una pérdida de señal no significan que la
+        // sala no exista. Se deja la sesión guardada para el próximo intento.
+        console.warn("No se pudo comprobar la sala; se conserva la sesión guardada.");
       });
-    } catch (e) {
+    } catch {
       clearSession();
     }
-  }, []);
+  }, [wallet?.address]);
 
   const handleHostQuiz = async () => {
     setMinterError("");
@@ -100,64 +189,99 @@ export default function App() {
   };
 
   const handleStartQuiz = async (quizData) => {
-    const roomCode = Math.random().toString(36).slice(2, 8).toUpperCase();
-    const result = await createSession(roomCode, quizData.name, quizData.questions);
+    const result = await createSession(
+      undefined, quizData.name, quizData.questions, quizData.className, loadLastHosted()
+    );
 
     if (!result.success) {
-      alert("Failed to create session: " + result.error);
+      alert("No se pudo crear la sala: " + result.error);
       return;
     }
 
-    socket.connect();
-    socket.once("connect", () => {
-      socket.emit("join_room", { roomCode, role: "host" });
-    });
+    const roomCode = result.session.roomCode;
+    const hostToken = result.session.hostToken;
+    saveLastHosted({ roomCode, hostToken });
+    // Lo que el servidor fija para la medalla NFT. Se guarda con el quiz para
+    // que siga estando si el profe recarga antes de entregarlas.
+    const { sessionId, className, date } = result.session;
+    const sessionQuiz = { ...quizData, sessionId, className, date };
+
+    joinRoom({ roomCode, role: "host", hostToken });
 
     saveSession({
       roomCode,
-      quizData,
+      quizData: sessionQuiz,
       role: "host",
       walletAddress: wallet?.address,
+      hostToken,
     });
-        
-    setActiveQuiz({ ...quizData, roomCode });
+
+    setActiveQuiz({ ...sessionQuiz, roomCode });
     setRole("host");
     setView("game");
   };
 
-  const handleJoinQuiz = async (code, nickname) => {
-    const trimmed = code.toUpperCase();
+  const handleJoinQuiz = async (code, nickname, followed = false) => {
+    const trimmed = normalizeRoomCode(code);
     const result = await validateSession(trimmed);
 
+    // Código de una sala que el profe reemplazó: se entra directo a la nueva.
+    if (!result.success && result.movedTo && !followed) {
+      return handleJoinQuiz(result.movedTo, nickname, true);
+    }
     if (!result.success) return { error: result.error };
 
-    socket.connect();
-    socket.once("connect", () => {
-      const address = wallet?.address;
-      if (!address) {
-        console.error("Wallet address not available");
-        return;
-      }
-      socket.emit("join_room", {
-        roomCode: trimmed,
-        player: {
-          address,
-          name: nickname,
-        },
+    const roomCode = result.session.roomCode;
+    const publicQuiz = {
+      roomCode,
+      name: result.session.name,
+      questions: result.session.questions || [],
+    };
+
+    const address = wallet?.address;
+    if (!address) return { error: "Conectá MetaMask primero." };
+
+    const outcome = await new Promise((resolve) => {
+      let timeout = null;
+      const finish = (value) => {
+        if (timeout) clearTimeout(timeout);
+        socket.off("join_accepted", onAccepted);
+        socket.off("join_rejected", onRejected);
+        resolve(value);
+      };
+      const onAccepted = ({ players } = {}) => finish({ success: true, players });
+      const onRejected = ({ reason } = {}) => {
+        finish({ error: joinErrorMessage(reason) });
+      };
+      socket.once("join_accepted", onAccepted);
+      socket.once("join_rejected", onRejected);
+      // Si el servidor no está, nunca llega ninguna de las dos, y sin esto el
+      // botón quedaba en "Entrando…" hasta recargar la página.
+      timeout = setTimeout(
+        () => finish({ error: "No se pudo contactar al servidor. Probá de nuevo." }),
+        ESPERA_MAXIMA_MS
+      );
+
+      joinRoom({
+        roomCode,
+        player: { address, name: nickname },
         role: "student",
       });
     });
 
+    if (!outcome.success) return outcome;
+
     saveSession({
-      roomCode: trimmed,
-      quizData: result.session,
+      roomCode,
+      quizData: publicQuiz,
       role: "student",
-      walletAddress: wallet?.address,
+      walletAddress: address,
       nickname,
     });
 
     setNickname(nickname);
-    setActiveQuiz(result.session);
+    setJoinPlayers(outcome.players || []);
+    setActiveQuiz(publicQuiz);
     setRole("student");
     setView("game");
     return { success: true };
@@ -166,28 +290,63 @@ export default function App() {
   const handleRejoin = () => {
     if (!savedSession) return;
 
-    socket.connect();
-    socket.once("connect", () => {
-      socket.once("session_resumed", (data) => {
-        setResumeData(data);
-        setActiveQuiz({ ...savedSession.quizData, roomCode: savedSession.roomCode });
-        setRole("host");
-        setView("game");
-      });
+    let timeout = null;
+    const stopListening = () => {
+      if (timeout) clearTimeout(timeout);
+      socket.off("session_resumed", onResumed);
+      socket.off("join_rejected", onRejected);
+    };
+    const onResumed = (data) => {
+      stopListening();
+      setRejoinError("");
+      setResumeData(data);
+    };
+    const onRejected = ({ reason } = {}) => {
+      stopListening();
+      // Antes salía a la pantalla inicial sin decir nada.
+      setRejoinError(joinErrorMessage(reason));
+      handleLeaveSession();
+    };
+    socket.on("session_resumed", onResumed);
+    socket.on("join_rejected", onRejected);
+    timeout = setTimeout(() => {
+      stopListening();
+      setRejoinError("No se pudo contactar al servidor. Probá de nuevo.");
+    }, ESPERA_MAXIMA_MS);
 
-      socket.emit("join_room", {
-        roomCode: savedSession.roomCode,
-        role: "host",
-        player: undefined,
-      });
+    joinRoom({
+      roomCode: savedSession.roomCode,
+      role: "host",
+      hostToken: savedSession.hostToken,
     });
 
-    setActiveQuiz(savedSession.quizData);
+    // savedSession.quizData holds only { name, questions }. Without the room code
+    // HostGame mounts with quiz.roomCode undefined and registers no socket handlers.
+    setActiveQuiz({ ...savedSession.quizData, roomCode: savedSession.roomCode });
     setRole("host");
     setView("game");
   };
 
+  useEffect(() => {
+    joinQuizRef.current = handleJoinQuiz;
+    followTeacherRef.current = (roomCode) => {
+      const current = joinPayloadRef.current;
+      if (!roomCode || current?.role !== "student") return;
+      if (normalizeRoomCode(roomCode) === current.roomCode) return;
+      const name = nickname || loadSession()?.nickname || "";
+      handleJoinQuiz(roomCode, name).then((outcome) => {
+        if (outcome?.error) console.warn("No se pudo pasar a la sala nueva:", outcome.error);
+      });
+    };
+  });
+
   const handleLeaveSession = () => {
+    // Si el profe sale, la sala se cierra de verdad. Antes quedaba abierta y los
+    // alumnos esperaban en un lobby que nadie iba a arrancar.
+    if (savedSession?.role === "host") {
+      deleteSession(savedSession.roomCode, savedSession.hostToken).catch(() => {});
+    }
+    joinPayloadRef.current = null;
     clearSession();
     setSavedSession(null);
     setView("landing");
@@ -200,19 +359,21 @@ export default function App() {
         <HostGame
           quiz={activeQuiz}
           wallet={wallet}
-          onGameEnd={() => { setView("landing"); setActiveQuiz(null); }}
+          onGameEnd={() => { joinPayloadRef.current = null; setView("landing"); setActiveQuiz(null); }}
           resumeData={resumeData}
         />
       );
 
     return (
       <StudentGame
+        key={activeQuiz.roomCode}
         quiz={activeQuiz}
         wallet={wallet}
         nickname={nickname}
+        initialPlayers={joinPlayers}
         resumeData={studentResumeData}
-        onPlayAgain={() => { clearSession(); setStudentResumeData(null); setView("join"); setActiveQuiz(null); }}
-        onGameEnd={() => { clearSession(); setStudentResumeData(null); setView("landing"); setActiveQuiz(null); }}
+        onPlayAgain={() => { joinPayloadRef.current = null; clearSession(); setStudentResumeData(null); setView("join"); setActiveQuiz(null); }}
+        onGameEnd={() => { joinPayloadRef.current = null; clearSession(); setStudentResumeData(null); setView("landing"); setActiveQuiz(null); }}
       />
     );
   };
@@ -235,7 +396,6 @@ export default function App() {
         onJoin={handleJoinQuiz}
         onBack={() => setView("landing")}
         onConnectWallet={connect}
-        activeSessions={activeSessions}
         walletError={walletError}
         connecting={connecting}
       />
@@ -260,6 +420,7 @@ export default function App() {
       onDisconnect={disconnect}
       walletError={walletError}
       minterError={minterError}
+      sessionError={rejoinError}
       connecting={connecting}
     />
   );
